@@ -1,0 +1,160 @@
+package com.example.watchstop.view
+
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.watchstop.activities.EditAssignmentActivity
+import com.example.watchstop.model.AssignmentEntry
+import com.example.watchstop.model.CurrentAssignmentObject
+import com.example.watchstop.model.UserProfileObject
+import com.example.watchstop.model.UserProfileObject.darkmode
+import com.example.watchstop.view.ui.theme.WatchStopTheme
+import java.time.format.DateTimeFormatter
+
+@Composable
+fun AssignmentCard(
+    assignmentEntryParameter: AssignmentEntry,
+    onEdited: (AssignmentEntry) -> Unit,
+    onDeleted: () -> Unit
+) {
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        val updatedEntry = CurrentAssignmentObject.getCurrentAssignmentEntry()
+        onEdited(updatedEntry.copy())
+    }
+
+    val backgroundColor = if (darkmode) Color(0xFF1C1C1E) else Color.White
+    val primaryText = if (darkmode) Color.White else Color.Black
+    val secondaryText = if (darkmode) Color(0xFF8E8E93) else Color(0xFF636366)
+    val accentColor = Color(0xFF007AFF)
+    val destructiveColor = Color(0xFFFF3B30)
+
+    WatchStopTheme (darkTheme = UserProfileObject.darkmode) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            colors = CardDefaults.cardColors(containerColor = backgroundColor),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp, horizontal = 16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = assignmentEntryParameter.title,
+                            style = androidx.compose.ui.text.TextStyle(
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = (-0.5).sp
+                            ),
+                            color = primaryText
+                        )
+
+                        Text(
+                            text = "Due ${
+                                assignmentEntryParameter.dueDate.toLocalDate()
+                                    .format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
+                            }",
+                            fontSize = 14.sp,
+                            color = secondaryText,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    Text(
+                        text = "Edit",
+                        color = accentColor,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clickable {
+                                CurrentAssignmentObject.loadCurrentAssignmentEntry(
+                                    assignmentEntryParameter
+                                )
+                                val editAssignmentIntent =
+                                    Intent(context, EditAssignmentActivity::class.java)
+                                launcher.launch(editAssignmentIntent)
+                            }
+                            .padding(start = 12.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = assignmentEntryParameter.description,
+                    fontSize = 15.sp,
+                    lineHeight = 20.sp,
+                    color = primaryText,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = (if (darkmode) Color.White else Color.Black).copy(alpha = 0.05f)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = assignmentEntryParameter.dueDate.toLocalTime()
+                                .format(DateTimeFormatter.ofPattern("h:mm a")),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = secondaryText
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    Text(
+                        text = "Delete",
+                        color = destructiveColor,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.clickable { onDeleted() }
+                    )
+                }
+            }
+        }
+    }
+}
