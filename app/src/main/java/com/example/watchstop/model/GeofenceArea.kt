@@ -6,5 +6,7 @@ import java.util.UUID
 data class GeofenceArea (
     val id: String = UUID.randomUUID().toString(),
     val center: LatLng,
-    val radius: Double
+    val typeId: Int, //1 for circle, 2 for polygon
+    val radius: Double,
+    val points: List<LatLng> = emptyList()
 )
