@@ -3,6 +3,7 @@
 package com.example.watchstop.view.screens
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.graphics.Point
 import android.widget.Toast
@@ -11,14 +12,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,13 +31,16 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.model.GeofenceArea
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.*
@@ -53,10 +58,12 @@ enum class MapInteractionMode {
     NONE, SET_PIN, DELETE, DRAW
 }
 
+@SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun MyGoogleMap() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
     
     val geofences = remember { mutableStateListOf<GeofenceArea>() }
@@ -64,12 +71,15 @@ fun MyGoogleMap() {
     var currentPin by remember { mutableStateOf<LatLng?>(null) }
     var radius by remember { mutableFloatStateOf(100f) }
 
+    // Naming state
+    var pendingGeofence by remember { mutableStateOf<GeofenceArea?>(null) }
+    var geofenceNameInput by remember { mutableStateOf("") }
+
     // Drawing states
     var currentDrawingPoints by remember { mutableStateOf<List<Offset>>(emptyList()) }
     var failingPolygon by remember { mutableStateOf<List<Offset>?>(null) }
     val failingAlpha = remember { Animatable(0f) }
 
-    // Check for location permissions
     var hasLocationPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
@@ -101,108 +111,130 @@ fun MyGoogleMap() {
             try {
                 fusedLocationClient.lastLocation.addOnSuccessListener { location ->
                     location?.let {
-                        cameraPositionState.position = CameraPosition.fromLatLngZoom(
-                            LatLng(it.latitude, it.longitude), 15f
-                        )
+                        cameraPositionState.position = CameraPosition.fromLatLngZoom(LatLng(it.latitude, it.longitude), 15f)
                     }
                 }
             } catch (e: SecurityException) {}
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        GoogleMap(
-            modifier = Modifier.fillMaxSize(),
-            cameraPositionState = cameraPositionState,
-            properties = MapProperties(
-                isMyLocationEnabled = hasLocationPermission
-            ),
-            uiSettings = MapUiSettings(
-                myLocationButtonEnabled = hasLocationPermission,
-                scrollGesturesEnabled = interactionMode != MapInteractionMode.DRAW,
-                zoomGesturesEnabled = interactionMode != MapInteractionMode.DRAW
-            ),
-            onMapClick = { latLng ->
-                if (interactionMode == MapInteractionMode.SET_PIN) {
-                    currentPin = latLng
-                    interactionMode = MapInteractionMode.NONE
-                    Toast.makeText(context, "Center set!", Toast.LENGTH_SHORT).show()
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            GoogleMap(
+                modifier = Modifier.fillMaxSize(),
+                cameraPositionState = cameraPositionState,
+                properties = MapProperties(isMyLocationEnabled = hasLocationPermission),
+                uiSettings = MapUiSettings(
+                    myLocationButtonEnabled = hasLocationPermission,
+                    scrollGesturesEnabled = interactionMode != MapInteractionMode.DRAW && pendingGeofence == null,
+                    zoomGesturesEnabled = interactionMode != MapInteractionMode.DRAW && pendingGeofence == null
+                ),
+                onMapClick = { latLng ->
+                    if (pendingGeofence != null) return@GoogleMap
+                    
+                    if (interactionMode == MapInteractionMode.SET_PIN) {
+                        currentPin = latLng
+                        snackbarHostState.currentSnackbarData?.dismiss()
+                        Toast.makeText(context, "Center set! Adjust radius and confirm.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        currentPin = null
+                        interactionMode = MapInteractionMode.NONE
+                        snackbarHostState.currentSnackbarData?.dismiss()
+                    }
                 }
-            }
-        ) {
-            currentPin?.let {
-                Marker(
-                    state = MarkerState(position = it),
-                    title = "Geofence center",
-                    snippet = "Selected position"
-                )
-                Circle(
-                    center = it,
-                    radius = radius.toDouble(),
-                    fillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                    strokeColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                    strokeWidth = 2f
-                )
-            }
-
-            geofences.forEach { zone ->
-                if (zone.points.isEmpty()) {
+            ) {
+                currentPin?.let {
+                    Marker(
+                        state = MarkerState(position = it),
+                        title = "Geofence center",
+                        snippet = "Selected position"
+                    )
                     Circle(
-                        center = zone.center,
-                        radius = zone.radius,
-                        fillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                        strokeColor = MaterialTheme.colorScheme.primary,
-                        strokeWidth = 2f,
-                        clickable = true,
-                        onClick = {
-                            if (interactionMode == MapInteractionMode.DELETE) {
-                                geofences.remove(zone)
-                                Toast.makeText(context, "Geofence deleted", Toast.LENGTH_SHORT).show()
-                            } else {
-                                scope.launch {
-                                    cameraPositionState.animate(
-                                        update = CameraUpdateFactory.newLatLngZoom(zone.center, 15f),
-                                        durationMs = 1000
-                                    )
-                                }
-                            }
-                        }
-                    )
-                } else {
-                    Polygon(
-                        points = zone.points,
-                        fillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                        strokeColor = MaterialTheme.colorScheme.primary,
-                        strokeWidth = 2f,
-                        clickable = true,
-                        onClick = {
-                            if (interactionMode == MapInteractionMode.DELETE) {
-                                geofences.remove(zone)
-                                Toast.makeText(context, "Geofence deleted", Toast.LENGTH_SHORT).show()
-                            } else {
-                                scope.launch {
-                                    cameraPositionState.animate(
-                                        update = CameraUpdateFactory.newLatLngZoom(zone.center, 15f),
-                                        durationMs = 1000
-                                    )
-                                }
-                            }
-                        }
+                        center = it,
+                        radius = radius.toDouble(),
+                        fillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        strokeColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                        strokeWidth = 2f
                     )
                 }
-            }
-        }
 
-        // Overlay for drawing
-        if (interactionMode == MapInteractionMode.DRAW) {
-            Canvas(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
+                geofences.forEach { zone ->
+                    if (zone.points.isEmpty()) {
+                        Circle(
+                            center = zone.center,
+                            radius = zone.radius,
+                            fillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                            strokeColor = MaterialTheme.colorScheme.primary,
+                            strokeWidth = 2f,
+                            clickable = true,
+                            onClick = {
+                                if (interactionMode == MapInteractionMode.DELETE) {
+                                    geofences.remove(zone)
+                                    Toast.makeText(context, "Geofence deleted", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    scope.launch {
+                                        cameraPositionState.animate(update = CameraUpdateFactory.newLatLngZoom(zone.center, 15f), durationMs = 1000)
+                                    }
+                                }
+                            }
+                        )
+                    } else {
+                        Polygon(
+                            points = zone.points,
+                            fillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                            strokeColor = MaterialTheme.colorScheme.primary,
+                            strokeWidth = 2f,
+                            clickable = true,
+                            onClick = {
+                                if (interactionMode == MapInteractionMode.DELETE) {
+                                    geofences.remove(zone)
+                                    Toast.makeText(context, "Geofence deleted", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    scope.launch {
+                                        cameraPositionState.animate(update = CameraUpdateFactory.newLatLngZoom(zone.center, 15f), durationMs = 1000)
+                                    }
+                                }
+                            }
+                        )
+                    }
+                    
+                    // Label for confirmed geofence
+                    Marker(
+                        state = MarkerState(position = zone.center),
+                        title = zone.name,
+                        icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE),
+                        alpha = 0.8f
+                    )
+                }
+                
+                // Show pending geofence preview while naming
+                pendingGeofence?.let { zone ->
+                    if (zone.points.isEmpty()) {
+                        Circle(
+                            center = zone.center,
+                            radius = zone.radius,
+                            fillColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f),
+                            strokeColor = MaterialTheme.colorScheme.secondary,
+                            strokeWidth = 3f
+                        )
+                    } else {
+                        Polygon(
+                            points = zone.points,
+                            fillColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f),
+                            strokeColor = MaterialTheme.colorScheme.secondary,
+                            strokeWidth = 3f
+                        )
+                    }
+                }
+            }
+
+            if (interactionMode == MapInteractionMode.DRAW && pendingGeofence == null) {
+                Canvas(
+                    modifier = Modifier.fillMaxSize().pointerInput(Unit) {
                         detectDragGestures(
-                            onDragStart = { offset ->
-                                currentDrawingPoints = listOf(offset)
-                            },
+                            onDragStart = { offset -> currentDrawingPoints = listOf(offset) },
                             onDrag = { change, _ ->
                                 change.consume()
                                 currentDrawingPoints = currentDrawingPoints + change.position
@@ -210,10 +242,8 @@ fun MyGoogleMap() {
                             onDragEnd = {
                                 if (currentDrawingPoints.size > 2) {
                                     val points = currentDrawingPoints
-                                    val closed = points + points.first()
-                                    
-                                    val area = calculateArea(closed)
-                                    val perimeter = calculatePerimeter(closed)
+                                    val area = calculateArea(points + points.first())
+                                    val perimeter = calculatePerimeter(points + points.first())
 
                                     if (area < (perimeter * perimeter) / 100.0) {
                                         failingPolygon = points
@@ -225,155 +255,203 @@ fun MyGoogleMap() {
                                         }
                                     } else {
                                         val projection = cameraPositionState.projection
-                                        val latLngs = points.mapNotNull { offset ->
-                                            projection?.fromScreenLocation(Point(offset.x.toInt(), offset.y.toInt()))
-                                        }
+                                        val latLngs = points.mapNotNull { offset -> projection?.fromScreenLocation(Point(offset.x.toInt(), offset.y.toInt())) }
                                         if (latLngs.isNotEmpty()) {
                                             val (center, radiusMeters) = findMEC(latLngs)
-                                            geofences.add(GeofenceArea(typeId = 2, center = center, radius = radiusMeters, points = latLngs))
-                                            Toast.makeText(context, "Custom geofence added", Toast.LENGTH_SHORT).show()
+                                            pendingGeofence = GeofenceArea(
+                                                name = "",
+                                                center = center,
+                                                typeId = 2,
+                                                radius = radiusMeters,
+                                                points = latLngs
+                                            )
+                                            geofenceNameInput = ""
                                         }
                                     }
                                 }
                                 currentDrawingPoints = emptyList()
                                 interactionMode = MapInteractionMode.NONE
+                                snackbarHostState.currentSnackbarData?.dismiss()
                             }
                         )
                     }
-            ) {
-                if (currentDrawingPoints.isNotEmpty()) {
+                ) {
+                    if (currentDrawingPoints.isNotEmpty()) {
+                        val path = Path().apply {
+                            moveTo(currentDrawingPoints.first().x, currentDrawingPoints.first().y)
+                            currentDrawingPoints.forEach { lineTo(it.x, it.y) }
+                            lineTo(currentDrawingPoints.first().x, currentDrawingPoints.first().y)
+                        }
+                        drawPath(path, Color.Blue, style = Stroke(width = 5f))
+                    }
+                }
+            }
+
+            failingPolygon?.let { points ->
+                Canvas(modifier = Modifier.fillMaxSize()) {
                     val path = Path().apply {
-                        moveTo(currentDrawingPoints.first().x, currentDrawingPoints.first().y)
-                        currentDrawingPoints.forEach { lineTo(it.x, it.y) }
-                        lineTo(currentDrawingPoints.first().x, currentDrawingPoints.first().y)
+                        moveTo(points.first().x, points.first().y)
+                        (points + points.first()).forEach { lineTo(it.x, it.y) }
                     }
-                    drawPath(path, Color.Blue, style = Stroke(width = 5f))
+                    drawPath(path, Color.Red.copy(alpha = failingAlpha.value), style = Stroke(width = 8f))
                 }
             }
-        }
 
-        // Animation for shape
-        failingPolygon?.let { points ->
-            val closed = points + points.first()
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val path = Path().apply {
-                    moveTo(closed.first().x, closed.first().y)
-                    closed.forEach { lineTo(it.x, it.y) }
+            // Naming Popup Overlay
+            pendingGeofence?.let {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Card(
+                        modifier = Modifier.padding(16.dp).width(280.dp),
+                        elevation = CardDefaults.cardElevation(8.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("Name your Geofence", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = geofenceNameInput,
+                                    onValueChange = { geofenceNameInput = it },
+                                    placeholder = { Text("e.g. Home") },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true
+                                )
+                                IconButton(
+                                    onClick = {
+                                        if (geofenceNameInput.isNotBlank()) {
+                                            geofences.add(it.copy(name = geofenceNameInput))
+                                            pendingGeofence = null
+                                            Toast.makeText(context, "Geofence saved", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Please enter a name", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                ) {
+                                    Icon(Icons.Default.Check, contentDescription = "Save", tint = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                            TextButton(
+                                onClick = { pendingGeofence = null },
+                                modifier = Modifier.align(Alignment.End)
+                            ) {
+                                Text("Cancel")
+                            }
+                        }
+                    }
                 }
-                drawPath(path, Color.Red.copy(alpha = failingAlpha.value), style = Stroke(width = 8f))
             }
-        }
 
-        // Toolbar
-        Card(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = 16.dp),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)),
-            elevation = CardDefaults.cardElevation(4.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                IconButton(
-                    onClick = {
-                        interactionMode = MapInteractionMode.SET_PIN
-                        Toast.makeText(context, "Tap on map to set geofence center", Toast.LENGTH_SHORT).show()
-                    }
+            // Toolbar
+            if (pendingGeofence == null) {
+                Card(
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)),
+                    elevation = CardDefaults.cardElevation(4.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.LocationOn,
-                        contentDescription = null,
-                        tint = if (interactionMode == MapInteractionMode.SET_PIN) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                
-                IconButton(
-                    onClick = {
-                        interactionMode = MapInteractionMode.DRAW
-                        Toast.makeText(context, "Draw your Geofence!", Toast.LENGTH_SHORT).show()
-                    }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Draw Geofence",
-                        tint = if (interactionMode == MapInteractionMode.DRAW) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                IconButton(
-                    onClick = {
-                        currentPin?.let {
-                            geofences.add(GeofenceArea(typeId = 1, center = it, radius = radius.toDouble()))
+                    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        IconButton(onClick = {
+                            interactionMode = MapInteractionMode.SET_PIN
+                            scope.launch {
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                val result = snackbarHostState.showSnackbar(
+                                    message = "Tap on map to set geofence center",
+                                    actionLabel = "Cancel",
+                                    duration = SnackbarDuration.Indefinite
+                                )
+                                if (result == SnackbarResult.ActionPerformed) {
+                                    interactionMode = MapInteractionMode.NONE
+                                    currentPin = null
+                                }
+                            }
+                        }) {
+                            Icon(imageVector = Icons.Default.LocationOn, contentDescription = null, tint = if (interactionMode == MapInteractionMode.SET_PIN) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                        }
+                        
+                        IconButton(onClick = {
                             currentPin = null
-                            Toast.makeText(context, "Circular geofence added", Toast.LENGTH_SHORT).show()
-                        } ?: run {
-                            Toast.makeText(context, "Set a pin first!", Toast.LENGTH_SHORT).show()
+                            interactionMode = MapInteractionMode.DRAW
+                            scope.launch {
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                val result = snackbarHostState.showSnackbar(
+                                    message = "Draw on the map to create a geofence",
+                                    actionLabel = "Cancel",
+                                    duration = SnackbarDuration.Indefinite
+                                )
+                                if (result == SnackbarResult.ActionPerformed) {
+                                    interactionMode = MapInteractionMode.NONE
+                                }
+                            }
+                        }) {
+                            Icon(imageVector = Icons.Default.Edit, contentDescription = "Draw Geofence", tint = if (interactionMode == MapInteractionMode.DRAW) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                        }
+
+                        if (currentPin != null) {
+                            IconButton(onClick = {
+                                currentPin?.let {
+                                    pendingGeofence = GeofenceArea(
+                                        name = "",
+                                        center = it,
+                                        typeId = 1,
+                                        radius = radius.toDouble()
+                                    )
+                                    geofenceNameInput = ""
+                                    currentPin = null
+                                    interactionMode = MapInteractionMode.NONE
+                                    snackbarHostState.currentSnackbarData?.dismiss()
+                                }
+                            }) {
+                                Icon(imageVector = Icons.Default.Check, contentDescription = "Confirm Circular Geofence", tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+
+                        IconButton(onClick = {
+                            currentPin = null
+                            if (interactionMode != MapInteractionMode.DELETE) {
+                                interactionMode = MapInteractionMode.DELETE
+                                scope.launch {
+                                    snackbarHostState.currentSnackbarData?.dismiss()
+                                    val result = snackbarHostState.showSnackbar(
+                                        message = "Entered Delete Mode: Click a geofence to delete",
+                                        actionLabel = "Exit",
+                                        duration = SnackbarDuration.Indefinite
+                                    )
+                                    if (result == SnackbarResult.ActionPerformed) {
+                                        interactionMode = MapInteractionMode.NONE
+                                    }
+                                }
+                            } else {
+                                interactionMode = MapInteractionMode.NONE
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                            }
+                        }) {
+                            Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete Mode", tint = if (interactionMode == MapInteractionMode.DELETE) Color.Red else MaterialTheme.colorScheme.onSurface)
                         }
                     }
-                ) {
-                    Icon(Icons.Default.RadioButtonUnchecked, contentDescription = "Add Circular Geofence")
                 }
+            }
 
-                IconButton(
-                    onClick = {
-                        if (interactionMode != MapInteractionMode.DELETE) {
-                            interactionMode = MapInteractionMode.DELETE
-                            Toast.makeText(context, "Entered Delete Mode", Toast.LENGTH_LONG).show()
-                        } else {
-                            interactionMode = MapInteractionMode.NONE
-                        }
+            if (currentPin != null && pendingGeofence == null) {
+                Card(
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp).padding(horizontal = 24.dp).fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)),
+                    elevation = CardDefaults.cardElevation(4.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(text = "Geofence Radius: ${radius.toInt()}m", style = MaterialTheme.typography.labelMedium)
+                        Slider(value = radius, onValueChange = { radius = it }, valueRange = 10f..250f, modifier = Modifier.padding(horizontal = 8.dp))
                     }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete Mode",
-                        tint = if (interactionMode == MapInteractionMode.DELETE) Color.Red else MaterialTheme.colorScheme.onSurface
-                    )
                 }
-            }
-        }
-
-        // Radius adjustment bar
-        if (currentPin != null) {
-            Card(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 32.dp)
-                    .padding(horizontal = 24.dp)
-                    .fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)),
-                elevation = CardDefaults.cardElevation(4.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Geofence Radius: ${radius.toInt()}m",
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                    Slider(
-                        value = radius,
-                        onValueChange = { radius = it },
-                        valueRange = 10f..250f,
-                        modifier = Modifier.padding(horizontal = 8.dp)
-                    )
-                }
-            }
-        }
-        
-        if (geofences.isNotEmpty()) {
-            Button(
-                onClick = { geofences.clear() },
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 16.dp)
-            ) {
-                Text("Clear (${geofences.size} Geofences)")
             }
         }
     }
@@ -400,9 +478,8 @@ fun calculatePerimeter(points: List<Offset>): Double {
 
 fun findMEC(latLngs: List<LatLng>): Pair<LatLng, Double> {
     if (latLngs.isEmpty()) return LatLng(0.0, 0.0) to 0.0
-    if (latLngs.size == 1) return latLngs[0] to 0.0
+    if (latLngs.size == 1) return LatLng(0.0, 0.0) to 0.0
     
-    // Ritter's algorithm for approximate MEC
     var p = latLngs[0]
     var q = latLngs.maxBy { dist(p, it) }!!
     var r = latLngs.maxBy { dist(q, it) }!!
@@ -415,10 +492,7 @@ fun findMEC(latLngs: List<LatLng>): Pair<LatLng, Double> {
         if (d > radius) {
             val newRadius = (radius + d) / 2.0
             val ratio = (d - radius) / (2.0 * d)
-            center = LatLng(
-                center.latitude + (s.latitude - center.latitude) * ratio,
-                center.longitude + (s.longitude - center.longitude) * ratio
-            )
+            center = LatLng(center.latitude + (s.latitude - center.latitude) * ratio, center.longitude + (s.longitude - center.longitude) * ratio)
             radius = newRadius
         }
     }
