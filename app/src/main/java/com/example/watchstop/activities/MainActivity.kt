@@ -54,6 +54,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // --- Onboarding Logic ---
         val prefs = getSharedPreferences("lab4_prefs", MODE_PRIVATE)
         if (debugOnboardingOn) {
             prefs.edit().putBoolean("first_use", true).apply()

@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.watchstop.data.UserGeofencesDatabase
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.view.GeoAlarmCard
 import com.example.watchstop.view.ui.theme.WatchStopTheme
@@ -30,6 +31,7 @@ fun GeoAlarmsScreen() {
                 .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            /*
             item {
                 Card(
                     shape = RoundedCornerShape(18.dp),
@@ -40,34 +42,26 @@ fun GeoAlarmsScreen() {
                     )
                 ) {
                     Column(Modifier.padding(horizontal = 10.dp, vertical = 20.dp)) {
-                        Text(
-                            text = "CS4131 Mobile Application Development",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (darkmode) Color.White else Color.Black
-                        )
 
-                        Spacer(Modifier.height(12.dp))
-
-                        Text(
-                            text = "",
-                            fontSize = 16.sp,
-                            lineHeight = 22.sp,
-                            color = if (darkmode) Color.LightGray else Color.DarkGray
-                        )
                     }
                 }
             }
+             */
 
             item {
                 Text(
-                    text = "Mode of Assessment",
+                    text = "My GeoAlarms",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = if (darkmode) Color.White else Color.Black
                 )
             }
 
+            /* TODO
+            UserGeofencesDatabase.getGeoAlarms().forEach{
+                item
+            }
+             */
             item { GeoAlarmCard("Lab Work (Best 4 out of 6 Labs)", "2.5% x4 = 10%") }
             item { GeoAlarmCard("In-Class Assignment 1 (Chapter 2-4)", "15%") }
             item { GeoAlarmCard("In-Class Assignment 2 (Chapter 6-8)", "20%") }
