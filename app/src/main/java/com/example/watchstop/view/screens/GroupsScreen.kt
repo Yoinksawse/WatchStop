@@ -27,13 +27,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.watchstop.model.UserProfileObject.darkmode
-import com.example.watchstop.view.ContactRow
+import com.example.watchstop.data.UserProfileObject.darkmode
+import com.example.watchstop.view.UserRow
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.launch
 
 @Composable
-fun TeacherScreen() {
+fun GroupsScreen() {
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -90,14 +90,14 @@ fun TeacherScreen() {
                         HorizontalDivider()
 
                         Text(
-                            text = "Mr Claude Chua",
+                            text = "My Group",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = if (darkmode) Color.White else Color.Black
                         )
 
-                        ContactRow("Hotline", "+65 8915 9218")
-                        ContactRow("Email", "heckerhaccersky@gmail.com")
+                        UserRow("Yeoh Jun De", 2)
+                        UserRow("Moodra Sampeng", 1)
                     }
                 }
             }

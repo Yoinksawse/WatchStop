@@ -5,18 +5,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -26,18 +22,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.watchstop.activities.EditAssignmentActivity
-import com.example.watchstop.model.AssignmentEntry
+import com.example.watchstop.activities.EditGroupActivity
+import com.example.watchstop.model.GroupEntry
 import com.example.watchstop.model.CurrentAssignmentObject
-import com.example.watchstop.model.UserProfileObject
-import com.example.watchstop.model.UserProfileObject.darkmode
+import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import java.time.format.DateTimeFormatter
 
 @Composable
-fun AssignmentCard(
-    assignmentEntryParameter: AssignmentEntry,
-    onEdited: (AssignmentEntry) -> Unit,
+fun GroupCard(
+    groupEntryParameter: GroupEntry,
+    onEdited: (GroupEntry) -> Unit,
     onDeleted: () -> Unit
 ) {
     val context = LocalContext.current
@@ -54,7 +49,7 @@ fun AssignmentCard(
     val accentColor = Color(0xFF007AFF)
     val destructiveColor = Color(0xFFFF3B30)
 
-    WatchStopTheme (darkTheme = UserProfileObject.darkmode) {
+    WatchStopTheme (darkTheme = darkmode) {
         Card(
             shape = RoundedCornerShape(20.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
@@ -74,7 +69,7 @@ fun AssignmentCard(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = assignmentEntryParameter.title,
+                            text = groupEntryParameter.title,
                             style = androidx.compose.ui.text.TextStyle(
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
@@ -85,7 +80,7 @@ fun AssignmentCard(
 
                         Text(
                             text = "Due ${
-                                assignmentEntryParameter.dueDate.toLocalDate()
+                                groupEntryParameter.dueDate.toLocalDate()
                                     .format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
                             }",
                             fontSize = 14.sp,
@@ -102,10 +97,10 @@ fun AssignmentCard(
                         modifier = Modifier
                             .clickable {
                                 CurrentAssignmentObject.loadCurrentAssignmentEntry(
-                                    assignmentEntryParameter
+                                    groupEntryParameter
                                 )
                                 val editAssignmentIntent =
-                                    Intent(context, EditAssignmentActivity::class.java)
+                                    Intent(context, EditGroupActivity::class.java)
                                 launcher.launch(editAssignmentIntent)
                             }
                             .padding(start = 12.dp)
@@ -115,7 +110,7 @@ fun AssignmentCard(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
-                    text = assignmentEntryParameter.description,
+                    text = groupEntryParameter.description,
                     fontSize = 15.sp,
                     lineHeight = 20.sp,
                     color = primaryText,
@@ -135,7 +130,7 @@ fun AssignmentCard(
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
-                            text = assignmentEntryParameter.dueDate.toLocalTime()
+                            text = groupEntryParameter.dueDate.toLocalTime()
                                 .format(DateTimeFormatter.ofPattern("h:mm a")),
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             fontSize = 12.sp,
@@ -147,7 +142,7 @@ fun AssignmentCard(
                     Spacer(modifier = Modifier.weight(1f))
 
                     Text(
-                        text = "Delete",
+                        text = "Close Group",
                         color = destructiveColor,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,

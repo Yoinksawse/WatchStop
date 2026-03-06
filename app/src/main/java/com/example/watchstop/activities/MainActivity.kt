@@ -38,12 +38,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.edit
 import com.example.watchstop.R
-import com.example.watchstop.model.UserProfileObject
+import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.view.BottomTabBar
 import com.example.watchstop.view.screens.MainMapScreen
-import com.example.watchstop.view.screens.ModuleInfoScreen
-import com.example.watchstop.view.screens.PlannerScreen
-import com.example.watchstop.view.screens.TeacherScreen
+import com.example.watchstop.view.screens.GeoAlarmsScreen
+import com.example.watchstop.view.screens.RouteTrackerScreen
+import com.example.watchstop.view.screens.GroupsScreen
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 
 var debugOnboardingOn = false; //TODO: just for debugging; TURN OFF
@@ -54,7 +54,6 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // --- Onboarding Logic ---
         val prefs = getSharedPreferences("lab4_prefs", MODE_PRIVATE)
         if (debugOnboardingOn) {
             prefs.edit().putBoolean("first_use", true).apply()
@@ -165,9 +164,9 @@ fun MainScreen(onToggleDarkMode: () -> Unit) {
         ) {
             when (selectedTab) {
                 0 -> MainMapScreen()
-                1 -> ModuleInfoScreen()
-                2 -> TeacherScreen()
-                3 -> PlannerScreen()
+                1 -> GeoAlarmsScreen()
+                2 -> GroupsScreen()
+                3 -> RouteTrackerScreen()
             }
         }
     }

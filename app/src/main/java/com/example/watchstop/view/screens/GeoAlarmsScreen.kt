@@ -17,12 +17,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.watchstop.model.UserProfileObject.darkmode
-import com.example.watchstop.view.AssessmentCard
+import com.example.watchstop.data.UserProfileObject.darkmode
+import com.example.watchstop.view.GeoAlarmCard
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 
 @Composable
-fun ModuleInfoScreen() {
+fun GeoAlarmsScreen() {
     WatchStopTheme (darkTheme = darkmode) {
         LazyColumn(
             modifier = Modifier
@@ -50,13 +50,7 @@ fun ModuleInfoScreen() {
                         Spacer(Modifier.height(12.dp))
 
                         Text(
-                            text = "This course introduces students to the design and implementation of" +
-                                    "Android applications for mobile devices. Students will develop an App from" +
-                                    "scratch, assuming a good knowledge of Java, and learn how to set up" +
-                                    "Android Studio, work with various Android building blocks (Activities," +
-                                    "Services, Broadcast, etc) to create simple user interfaces to make Apps run" +
-                                    "smoothly. At the end of the course, students will learn skills for creating and" +
-                                    "deploying Android applications.",
+                            text = "",
                             fontSize = 16.sp,
                             lineHeight = 22.sp,
                             color = if (darkmode) Color.LightGray else Color.DarkGray
@@ -74,11 +68,11 @@ fun ModuleInfoScreen() {
                 )
             }
 
-            item { AssessmentCard("Lab Work (Best 4 out of 6 Labs)", "2.5% x4 = 10%") }
-            item { AssessmentCard("In-Class Assignment 1 (Chapter 2-4)", "15%") }
-            item { AssessmentCard("In-Class Assignment 2 (Chapter 6-8)", "20%") }
-            item { AssessmentCard("Pairwork Programming Assignment", "15%") }
-            item { AssessmentCard("App Development Project", "40%") }
+            item { GeoAlarmCard("Lab Work (Best 4 out of 6 Labs)", "2.5% x4 = 10%") }
+            item { GeoAlarmCard("In-Class Assignment 1 (Chapter 2-4)", "15%") }
+            item { GeoAlarmCard("In-Class Assignment 2 (Chapter 6-8)", "20%") }
+            item { GeoAlarmCard("Pairwork Programming Assignment", "15%") }
+            item { GeoAlarmCard("App Development Project", "40%") }
 
             item { Spacer(modifier = Modifier.height(10.dp)) }
         }

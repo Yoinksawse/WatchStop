@@ -3,7 +3,7 @@ package com.example.watchstop.model
 import java.time.LocalDateTime
 
 object CurrentAssignmentObject {
-    private val assignmentEntry = AssignmentEntry(
+    private val assignmentEntry = GroupEntry(
         title = "",
         dueDate = LocalDateTime.now(),
         description = ""
@@ -29,7 +29,7 @@ object CurrentAssignmentObject {
             activated = true
         }
 
-    fun getCurrentAssignmentEntry(): AssignmentEntry {
+    fun getCurrentAssignmentEntry(): GroupEntry {
         return assignmentEntry
     }
 
@@ -39,7 +39,7 @@ object CurrentAssignmentObject {
         assignmentEntry.description = ""
     }
 
-    fun loadCurrentAssignmentEntry(otherAssignmentEntry: AssignmentEntry) {
+    fun loadCurrentAssignmentEntry(otherAssignmentEntry: GroupEntry) {
         assignmentEntry.title = otherAssignmentEntry.title
         assignmentEntry.dueDate = otherAssignmentEntry.dueDate
         assignmentEntry.description = otherAssignmentEntry.description

@@ -1,4 +1,4 @@
-package com.example.watchstop.view
+package com.example.watchstop.view.ui.theme
 
 
 import androidx.compose.material.icons.Icons
@@ -6,7 +6,6 @@ import androidx.compose.material.icons.materialIcon
 import androidx.compose.material.icons.materialPath
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.tooling.preview.Preview
 
 private var _locationAlarm: ImageVector? = null
 public val Icons.Filled.LocationAlarm: ImageVector

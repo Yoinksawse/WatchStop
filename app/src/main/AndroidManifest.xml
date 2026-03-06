@@ -34,7 +34,7 @@
             android:name=".activities.OnboardingActivity"
             android:exported="false" />
         <activity
-            android:name=".activities.EditAssignmentActivity"
+            android:name=".activities.EditGroupActivity"
             android:exported="false" />
     </application>
 

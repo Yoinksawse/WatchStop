@@ -17,13 +17,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.watchstop.model.UserProfileObject
-import com.example.watchstop.model.UserProfileObject.darkmode
+import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 
 @Composable
-fun AssessmentCard(title: String, weight: String) {
-    WatchStopTheme (darkTheme = UserProfileObject.darkmode) {
+fun GeoAlarmCard(title: String, weight: String) {
+    WatchStopTheme (darkTheme = darkmode) {
         Card(
             shape = RoundedCornerShape(14.dp),
             elevation = CardDefaults.cardElevation(4.dp),

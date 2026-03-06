@@ -7,7 +7,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -20,33 +19,24 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.example.watchstop.model.UserProfileObject
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
+import com.example.watchstop.data.UserProfileObject
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.example.watchstop.model.AssignmentEntry
+import com.example.watchstop.model.GroupEntry
 import com.example.watchstop.model.CurrentAssignmentObject
 import com.example.watchstop.view.ui.theme.WatchStopTheme
-import java.time.LocalDateTime
 
-class EditAssignmentActivity : AppCompatActivity() {
+class EditGroupActivity : AppCompatActivity() {
     @RequiresApi(Build.VERSION_CODES.O)
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,10 +54,10 @@ class EditAssignmentActivity : AppCompatActivity() {
                 var year by remember { mutableStateOf(current.dueDate.year.toString()) }
 
                 val result = remember {
-                    AssignmentEntry(
+                    GroupEntry(
                         current.title,
                         current.dueDate,
-                        current.description
+                        current.description,
                     )
                 }
 

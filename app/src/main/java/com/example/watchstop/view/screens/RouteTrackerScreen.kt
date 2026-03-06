@@ -28,16 +28,16 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.watchstop.model.AssignmentEntry
-import com.example.watchstop.model.UserProfileObject.darkmode
-import com.example.watchstop.view.AssignmentCard
+import com.example.watchstop.model.GroupEntry
+import com.example.watchstop.data.UserProfileObject.darkmode
+import com.example.watchstop.view.GroupCard
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import java.time.LocalDateTime
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
-fun PlannerScreen() {
-    val assignments = remember { mutableStateListOf<AssignmentEntry>() }
+fun RouteTrackerScreen() {
+    val assignments = remember { mutableStateListOf<GroupEntry>() }
 
     WatchStopTheme(darkTheme = darkmode) {
         Scaffold(
@@ -48,17 +48,19 @@ fun PlannerScreen() {
                     shape = RoundedCornerShape(16.dp),
                     onClick = {
                         assignments.add(
-                            AssignmentEntry(
-                                "Lab X",
-                                LocalDateTime.now(),
-                                "DO YOUR LAB."
+                            GroupEntry(
+                                "New Group",
+                                LocalDateTime.now(), //TODO: add event time
+                                "Group for Event X / Family Y / Organisation Z",
+                                groupMemberIds = mutableListOf(), //TODO: add group members
+                                //make searchbar to find username from searchbar, search firebase data, add selected to the new group
                             )
                         )
                     }
                 ) {
                     Icon(
                         Icons.Default.Add,
-                        contentDescription = "Add Assignment",
+                        contentDescription = "Create new group",
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -93,8 +95,8 @@ fun PlannerScreen() {
                 modifier = Modifier.padding(innerPadding)
             ) {
                 items(assignments.size) { i ->
-                    AssignmentCard(
-                        assignmentEntryParameter = assignments[i],
+                    GroupCard(
+                        groupEntryParameter = assignments[i],
 
                         onEdited = { updatedEntry ->
                             assignments[i] = updatedEntry
