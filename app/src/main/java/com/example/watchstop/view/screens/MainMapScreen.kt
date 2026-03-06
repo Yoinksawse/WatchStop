@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.example.watchstop.data.UserGeofencesDatabase
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.model.GeofenceArea
 import com.example.watchstop.view.ui.theme.WatchStopTheme
@@ -70,6 +71,11 @@ fun MyGoogleMap() {
     var interactionMode by remember { mutableStateOf(MapInteractionMode.NONE) }
     var currentPin by remember { mutableStateOf<LatLng?>(null) }
     var radius by remember { mutableFloatStateOf(100f) }
+
+    // Sync with database on start
+    LaunchedEffect(Unit) {
+        geofences.addAll(UserGeofencesDatabase.getAllGeofences())
+    }
 
     // Naming state
     var pendingGeofence by remember { mutableStateOf<GeofenceArea?>(null) }
@@ -172,6 +178,7 @@ fun MyGoogleMap() {
                             onClick = {
                                 if (interactionMode == MapInteractionMode.DELETE) {
                                     geofences.remove(zone)
+                                    UserGeofencesDatabase.removeGeofence(zone)
                                     Toast.makeText(context, "Geofence deleted", Toast.LENGTH_SHORT).show()
                                 } else {
                                     scope.launch {
@@ -190,6 +197,7 @@ fun MyGoogleMap() {
                             onClick = {
                                 if (interactionMode == MapInteractionMode.DELETE) {
                                     geofences.remove(zone)
+                                    UserGeofencesDatabase.removeGeofence(zone)
                                     Toast.makeText(context, "Geofence deleted", Toast.LENGTH_SHORT).show()
                                 } else {
                                     scope.launch {
@@ -328,7 +336,9 @@ fun MyGoogleMap() {
                                 IconButton(
                                     onClick = {
                                         if (geofenceNameInput.isNotBlank()) {
-                                            geofences.add(it.copy(name = geofenceNameInput))
+                                            val finalGeofence = it.copy(name = geofenceNameInput)
+                                            geofences.add(finalGeofence)
+                                            UserGeofencesDatabase.addGeofence(finalGeofence)
                                             pendingGeofence = null
                                             Toast.makeText(context, "Geofence saved", Toast.LENGTH_SHORT).show()
                                         } else {
