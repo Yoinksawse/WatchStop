@@ -12,18 +12,35 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
 
+val NeonLime = Color(0xFFC6FF00)
+val ElectricYellow = Color(0xFFFFF176)
+val DeepVibrantPurple = Color(0xFF7C4DFF)
+
+val SpaceGrey = Color(0xFF121212)
+val CarbonGrey = Color(0xFF1E1E1E)
+val SlateGrey = Color(0xFF2C2C2C)
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey80,
-    tertiary = Pink80,
+    primary = NeonLime,
+    onPrimary = Color.Black,
 
-    surface = Color.DarkGray,
-    onPrimary = Color.White,
-    onSurface = Color.White
+    secondary = CarbonGrey,
+    onSecondary = Color.White,
+
+    tertiary = ElectricYellow,
+    onTertiary = Color.Black,
+
+    background = SpaceGrey,
+    onBackground = Color.White,
+
+    surface = CarbonGrey,
+    onSurface = Color.White,
+
+    outline = Color.Gray,
+    surfaceVariant = SlateGrey,
+    onSurfaceVariant = Color.LightGray
 )
-
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
+    primary = DeepVibrantPurple,
     secondary = PurpleGrey40,
     tertiary = Pink40,
 

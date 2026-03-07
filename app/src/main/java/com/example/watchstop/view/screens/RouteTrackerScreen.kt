@@ -43,8 +43,8 @@ fun RouteTrackerScreen() {
         Scaffold(
             floatingActionButton = {
                 FloatingActionButton(
-                    backgroundColor = if (darkmode) Color.DarkGray else Color.White,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    backgroundColor = if (darkmode) MaterialTheme.colorScheme.secondary else Color.White,
+                    contentColor = if (darkmode) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onPrimary,
                     shape = RoundedCornerShape(16.dp),
                     onClick = {
                         assignments.add(

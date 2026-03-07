@@ -14,6 +14,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -54,6 +55,8 @@ fun GroupsScreen() {
                             snackbarHostState.showSnackbar("Email sent to Mr Chua")
                         }
                     },
+                    containerColor = if (darkmode) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
+                    contentColor = if (darkmode) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onPrimary
                 )
             }
         ) { innerPadding ->
