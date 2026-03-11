@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "593371161309",
+    "project_id": "watchstopdb",
+    "storage_bucket": "watchstopdb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:593371161309:android:2cf90e31b22e12b756f134",
+        "android_client_info": {
+          "package_name": "com.example.watchstop"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD5JbC0EO3v5Eq_b72h6kCQAXWsYUZpzbQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

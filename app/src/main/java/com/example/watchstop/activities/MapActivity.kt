@@ -37,7 +37,7 @@ class MapActivity : AppCompatActivity() {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                         contentDescription = "Back",
-                                        tint = MaterialTheme.colorScheme.onPrimary
+                                        tint = Color.White
                                     )
                                 }
                             },

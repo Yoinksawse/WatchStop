@@ -272,5 +272,4 @@ fun OnboardingReactive(
             }
         }
     }
-
 }

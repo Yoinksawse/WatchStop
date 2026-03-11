@@ -55,7 +55,7 @@ class ProfileActivity : ComponentActivity() {
                                 }
                             },
                             colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
+                                containerColor = MaterialTheme.colorScheme.surface,
                                 titleContentColor = Color.White,
                                 navigationIconContentColor = Color.White
                             ),

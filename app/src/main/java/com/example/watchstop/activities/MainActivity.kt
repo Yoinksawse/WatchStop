@@ -1,11 +1,16 @@
 package com.example.watchstop.activities
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.Image
@@ -32,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,10 +51,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import com.example.watchstop.R
+import com.example.watchstop.data.GeoAlarmsDatabase
+import com.example.watchstop.data.UserGeofencesDatabase
 import com.example.watchstop.data.UserProfile
 import com.example.watchstop.data.UserProfileObject
+import com.example.watchstop.service.GeofenceMonitorService
 import com.example.watchstop.view.BottomTabBar
 import com.example.watchstop.view.screens.MainMapScreen
 import com.example.watchstop.view.screens.GeoAlarmsScreen
@@ -66,6 +76,10 @@ class MainActivity : AppCompatActivity() {
 
         // Load current user session
         UserProfileObject.loadCurrentUser(this)
+        
+        // Fetch data from Firebase
+        UserGeofencesDatabase.fetchGeofencesFromFirebaseDB()
+        GeoAlarmsDatabase.fetchAlarmsFromFirebaseDB()
 
         // --- Onboarding Logic ---
         val prefs = getSharedPreferences("lab4_prefs", MODE_PRIVATE)
@@ -81,12 +95,73 @@ class MainActivity : AppCompatActivity() {
 
         setContent {
             WatchStopTheme(darkTheme = UserProfileObject.darkmode) {
+                val context = LocalContext.current
+                
+                // Permission logic for background monitoring
+                val foregroundLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestMultiplePermissions()
+                ) { permissions ->
+                    val granted = permissions.values.all { it }
+                    if (granted) {
+                        checkAndRequestBackgroundPermission()
+                    }
+                }
+
+                LaunchedEffect(Unit) {
+                    val foregroundGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    if (foregroundGranted) {
+                        checkAndRequestBackgroundPermission()
+                    } else {
+                        foregroundLauncher.launch(arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        ))
+                    }
+                    
+                    // Request notification permission for Android 13+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
+                        }
+                    }
+                }
+
                 MainScreen(onToggleDarkMode = {
                     UserProfileObject.darkmode = !UserProfileObject.darkmode
-                    // Persist dark mode setting
                     UserProfileObject.saveUserProfile(this)
                 })
             }
+        }
+    }
+
+    private val backgroundLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            startGeofenceService()
+        } else {
+            Toast.makeText(this, "Please set Location to 'Allow all the time' in settings for background alarms.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun checkAndRequestBackgroundPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val hasBackground = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
+            if (hasBackground) {
+                startGeofenceService()
+            } else {
+                backgroundLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            }
+        } else {
+            startGeofenceService()
+        }
+    }
+
+    private fun startGeofenceService() {
+        Log.d("MainActivity", "Starting Geofence Monitor Service")
+        val serviceIntent = Intent(this, GeofenceMonitorService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
         }
     }
 }
@@ -206,8 +281,8 @@ fun MainScreen(onToggleDarkMode: () -> Unit) {
                         selectedTab = 0
                     },
                 )
-                2 -> GroupsScreen()
-                3 -> RouteTrackerScreen()
+                2 -> RouteTrackerScreen()
+                3 -> GroupsScreen()
             }
         }
     }

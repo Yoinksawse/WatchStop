@@ -146,7 +146,6 @@ fun EditGeoAlarmDialog(
     var showDatePicker by remember { mutableStateOf(false) }
     var showStartPicker by remember { mutableStateOf(false) }
     var showEndPicker by remember { mutableStateOf(false) }
-    var showWarningAlert by remember { mutableStateOf(false) }
     var showNoGeofenceDialog by remember { mutableStateOf(false) }
     
     var selectedDate by remember { mutableStateOf(alarm.specificDate) }
@@ -167,25 +166,28 @@ fun EditGeoAlarmDialog(
     val buttonBorder = BorderStroke(1.dp, outlineColor.copy(alpha = 0.6f))
     val buttonContentColor = if (darkmode) Color.White else Color.Black
 
-    if (showWarningAlert) {
-        MultiPurposeDialog(onDismissRequest = { showWarningAlert = false }, confirmButton = {
-            TextButton(onClick = { showWarningAlert = false }) { Text("OK") }
-        })
-        { Text("No Geofence Selected; Alarm will not be activated") }
-    }
-
+    //if no geofence selected/created
     if (showNoGeofenceDialog) {
+        var noGeofences: Boolean = UserGeofencesDatabase.getAllGeofences().isEmpty()
+        var actionString =
+            if (noGeofences) "You haven't created any Geofences yet. Create one now?"
+            else "You haven't selected a Geofence."
+        var titleString =
+            if (noGeofences) "No Geofences Found"
+            else "Select a Geofence"
         AlertDialog(
             onDismissRequest = { showNoGeofenceDialog = false },
-            title = { Text("No Geofences Found") },
-            text = { Text("You haven't created any geofences yet. Would you like to create one now?") },
+            title = { Text(titleString) },
+            text = { Text(actionString) },
             confirmButton = {
-                TextButton(onClick = {
-                    showNoGeofenceDialog = false
-                    val intent = Intent(context, MapActivity::class.java)
-                    context.startActivity(intent)
-                }) {
-                    Text("Add Geofence")
+                if (noGeofences) {
+                    TextButton(onClick = {
+                        showNoGeofenceDialog = false
+                        val intent = Intent(context, MapActivity::class.java)
+                        context.startActivity(intent)
+                    }) {
+                        Text("Add Geofence")
+                    }
                 }
             },
             dismissButton = {
@@ -443,12 +445,22 @@ fun EditGeoAlarmDialog(
                         }
                         DropdownMenu(
                             expanded = gfExpanded,
-                            onDismissRequest = { gfExpanded = false }) {
+                            onDismissRequest = { gfExpanded = false }
+                        ) {
                             UserGeofencesDatabase.getAllGeofences().forEach { gf ->
                                 DropdownMenuItem(
                                     text = { Text(gf.name) },
-                                    onClick = { selectedGeofenceId = gf.id; gfExpanded = false })
+                                    onClick = { selectedGeofenceId = gf.id; gfExpanded = false }
+                                )
                             }
+
+                            DropdownMenuItem(
+                                text = { Text(" +  Create New") },
+                                onClick = {
+                                    val intent = Intent(context, MapActivity::class.java)
+                                    context.startActivity(intent)
+                                }
+                            )
                         }
                     }
                 }
@@ -458,7 +470,7 @@ fun EditGeoAlarmDialog(
             Button(onClick = {
                 //some error handling stuffs
                 if (selectedGeofenceId == null) {
-                    showWarningAlert = true
+                    showNoGeofenceDialog = true
                 }
                 else {
                     if (alarm.name.isEmpty()) {

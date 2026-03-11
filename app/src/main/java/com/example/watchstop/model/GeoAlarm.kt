@@ -1,5 +1,6 @@
 package com.example.watchstop.model
 
+import com.example.watchstop.data.UserGeofencesDatabase
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.DayOfWeek
@@ -17,4 +18,8 @@ data class GeoAlarm (
     var dayOfWeek: DayOfWeek? = null,
     var startTime: LocalTime? = null,
     var endTime: LocalTime? = null
-)
+) {
+    fun getGeofence(): GeofenceArea? {
+        return UserGeofencesDatabase.getGeofenceInstance(geofenceId)
+    }
+}

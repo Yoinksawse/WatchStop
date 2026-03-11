@@ -1,13 +1,19 @@
 package com.example.watchstop.view.screens
 
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.FloatingActionButton
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -20,88 +26,96 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.watchstop.data.UserProfileObject.darkmode
+import com.example.watchstop.model.GroupEntry
+import com.example.watchstop.view.GroupCard
 import com.example.watchstop.view.UserRow
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.launch
+import java.time.LocalDateTime
 
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun GroupsScreen() {
-    val scope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val assignments = remember { mutableStateListOf<GroupEntry>() }
 
-    WatchStopTheme (darkTheme = darkmode) {
+    WatchStopTheme(darkTheme = darkmode) {
         Scaffold(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            snackbarHost = {
-                SnackbarHost(hostState = snackbarHostState)
-            },
             floatingActionButton = {
-                ExtendedFloatingActionButton(
-                    text = { Text("Email Mr Chua") },
-                    icon = { Icon(Icons.Filled.Email, contentDescription = null) },
+                FloatingActionButton(
+                    backgroundColor = if (darkmode) MaterialTheme.colorScheme.secondary else Color.White,
+                    contentColor = if (darkmode) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onPrimary,
+                    shape = RoundedCornerShape(16.dp),
                     onClick = {
-                        scope.launch {
-                            snackbarHostState.showSnackbar("Email sent to Mr Chua")
-                        }
-                    },
-                    containerColor = if (darkmode) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
-                    contentColor = if (darkmode) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onPrimary
-                )
+                        assignments.add(
+                            GroupEntry(
+                                "New Group",
+                                LocalDateTime.now(), //TODO: add event time
+                                "Group for Event X / Family Y / Organisation Z",
+                                groupMemberIds = mutableListOf(), //TODO: add group members
+                                //make searchbar to find username from searchbar, search firebase data, add selected to the new group
+                            )
+                        )
+                    }
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = "Create new group",
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
         ) { innerPadding ->
-            Box(
-                modifier = Modifier
-                    .padding(innerPadding)
-                    .fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
+            if (assignments.isEmpty()) {
                 Card(
-                    shape = RoundedCornerShape(20.dp),
-                    elevation = CardDefaults.cardElevation(8.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    elevation = CardDefaults.cardElevation(0.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor =
-                            if (darkmode) Color(0xFF1E1E1E)
-                            else Color(0xFFF5F5F5)
+                        containerColor = if (darkmode) Color(0xFF1C1C1E) else Color.White
                     ),
-                    modifier = Modifier.fillMaxWidth(0.9f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp)
                 ) {
-                    Column(
+                    Text(
+                        text = "No Assignments",
                         modifier = Modifier
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-
-                        Text(
-                            text = "Teacher Contact",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (darkmode) Color.White else Color.Black
+                            .padding(vertical = 40.dp, horizontal = 16.dp)
+                            .align(Alignment.CenterHorizontally),
+                        style = TextStyle(
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (darkmode) Color(0xFF8E8E93) else Color(0xFF8E8E93), // iOS Secondary Label Color
+                            letterSpacing = (-0.4).sp
                         )
+                    )
+                }
+            }
+            LazyColumn(
+                modifier = Modifier.padding(innerPadding)
+            ) {
+                items(assignments.size) { i ->
+                    GroupCard(
+                        groupEntryParameter = assignments[i],
 
-                        HorizontalDivider()
+                        onEdited = { updatedEntry ->
+                            assignments[i] = updatedEntry
+                        },
 
-                        Text(
-                            text = "My Group",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (darkmode) Color.White else Color.Black
-                        )
-
-                        UserRow("Yeoh Jun De", 2)
-                        UserRow("Moodra Sampeng", 1)
-                    }
+                        onDeleted = {
+                            assignments.remove(assignments[i])
+                        }
+                    )
                 }
             }
         }

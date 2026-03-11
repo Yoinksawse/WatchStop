@@ -9,5 +9,6 @@ data class GeofenceArea (
     val center: LatLng,
     val typeId: Int, //1 for circle, 2 for polygon
     val radius: Double,
-    val points: List<LatLng> = emptyList()
+    val points: List<LatLng> = emptyList(),
+    var geoAlarmId: String? = null,
 )
