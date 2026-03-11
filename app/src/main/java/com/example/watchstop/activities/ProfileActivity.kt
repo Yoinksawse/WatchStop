@@ -29,6 +29,9 @@ import com.example.watchstop.R
 import com.example.watchstop.data.GUEST_USERNAME
 import com.example.watchstop.data.UserProfile
 import com.example.watchstop.data.UserProfileObject
+import com.example.watchstop.data.UserProfileObject.darkmode
+import com.example.watchstop.view.ui.theme.CarbonGrey
+import com.example.watchstop.view.ui.theme.Purple40
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.launch
 
@@ -55,9 +58,9 @@ class ProfileActivity : ComponentActivity() {
                                 }
                             },
                             colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = MaterialTheme.colorScheme.surface,
-                                titleContentColor = Color.White,
-                                navigationIconContentColor = Color.White
+                                containerColor = if (darkmode) CarbonGrey else Purple40,
+                                titleContentColor = if (darkmode) Color.White else Color.Black,
+                                navigationIconContentColor = if (darkmode) Color.White else Color.Black
                             ),
                         )
                     },

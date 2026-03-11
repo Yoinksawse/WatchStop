@@ -1,8 +1,10 @@
 package com.example.watchstop.view
 
 import android.content.Intent
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,11 +26,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.watchstop.activities.EditGroupActivity
 import com.example.watchstop.model.GroupEntry
-import com.example.watchstop.model.CurrentAssignmentObject
+import com.example.watchstop.model.CurrentGroupObject
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import java.time.format.DateTimeFormatter
 
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun GroupCard(
     groupEntryParameter: GroupEntry,
@@ -39,7 +42,7 @@ fun GroupCard(
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) {
-        val updatedEntry = CurrentAssignmentObject.getCurrentAssignmentEntry()
+        val updatedEntry = CurrentGroupObject.getCurrentAssignmentEntry()
         onEdited(updatedEntry.copy())
     }
 
@@ -80,7 +83,7 @@ fun GroupCard(
 
                         Text(
                             text = "Due ${
-                                groupEntryParameter.dueDate.toLocalDate()
+                                groupEntryParameter.eventDateTime.toLocalDate()
                                     .format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
                             }",
                             fontSize = 14.sp,
@@ -96,7 +99,7 @@ fun GroupCard(
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier
                             .clickable {
-                                CurrentAssignmentObject.loadCurrentAssignmentEntry(
+                                CurrentGroupObject.loadCurrentAssignmentEntry(
                                     groupEntryParameter
                                 )
                                 val editAssignmentIntent =
@@ -130,7 +133,7 @@ fun GroupCard(
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
-                            text = groupEntryParameter.dueDate.toLocalTime()
+                            text = groupEntryParameter.eventDateTime.toLocalTime()
                                 .format(DateTimeFormatter.ofPattern("h:mm a")),
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             fontSize = 12.sp,

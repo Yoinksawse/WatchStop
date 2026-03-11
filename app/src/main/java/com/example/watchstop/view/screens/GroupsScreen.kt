@@ -5,11 +5,14 @@ import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.FloatingActionButton
 import androidx.compose.material.icons.Icons
@@ -18,6 +21,7 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -36,8 +40,10 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.model.GroupEntry
+import com.example.watchstop.model.GroupRole
 import com.example.watchstop.view.GroupCard
 import com.example.watchstop.view.UserRow
 import com.example.watchstop.view.ui.theme.WatchStopTheme
@@ -53,17 +59,19 @@ fun GroupsScreen() {
         Scaffold(
             floatingActionButton = {
                 FloatingActionButton(
-                    backgroundColor = if (darkmode) MaterialTheme.colorScheme.secondary else Color.White,
-                    contentColor = if (darkmode) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onPrimary,
+                    containerColor = if (darkmode) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
+                    contentColor = Color.White,
                     shape = RoundedCornerShape(16.dp),
                     onClick = {
+                        val currentUser = UserProfileObject.userName
                         assignments.add(
                             GroupEntry(
-                                "New Group",
-                                LocalDateTime.now(), //TODO: add event time
-                                "Group for Event X / Family Y / Organisation Z",
-                                groupMemberIds = mutableListOf(), //TODO: add group members
-                                //make searchbar to find username from searchbar, search firebase data, add selected to the new group
+                                title = "New Group",
+                                eventDateTime = LocalDateTime.now(),
+                                description = "Group for Event X / Family Y / Organisation Z",
+                                groupMemberNames = mutableListOf(currentUser),
+                                memberRoles = mutableMapOf(currentUser to GroupRole.SUPER_ADMIN),
+                                canToggleSharing = mutableMapOf(currentUser to true)
                             )
                         )
                     }
@@ -76,6 +84,16 @@ fun GroupsScreen() {
                 }
             }
         ) { innerPadding ->
+            
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "My GeoAlarms",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (darkmode) Color.White else Color.Black,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
             if (assignments.isEmpty()) {
                 Card(
                     shape = RoundedCornerShape(12.dp),
@@ -88,7 +106,7 @@ fun GroupsScreen() {
                         .padding(32.dp)
                 ) {
                     Text(
-                        text = "No Assignments",
+                        text = "No Groups",
                         modifier = Modifier
                             .padding(vertical = 40.dp, horizontal = 16.dp)
                             .align(Alignment.CenterHorizontally),
@@ -104,16 +122,16 @@ fun GroupsScreen() {
             LazyColumn(
                 modifier = Modifier.padding(innerPadding)
             ) {
-                items(assignments.size) { i ->
+                itemsIndexed(assignments) { i, group ->
                     GroupCard(
-                        groupEntryParameter = assignments[i],
+                        groupEntryParameter = group,
 
                         onEdited = { updatedEntry ->
                             assignments[i] = updatedEntry
                         },
 
                         onDeleted = {
-                            assignments.remove(assignments[i])
+                            assignments.removeAt(i)
                         }
                     )
                 }

@@ -72,7 +72,7 @@ fun GeoAlarmsScreen(
                     .padding(innerPadding)
                     .padding(horizontal = 16.dp)
             ) {
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "My GeoAlarms",
                     fontSize = 24.sp,
