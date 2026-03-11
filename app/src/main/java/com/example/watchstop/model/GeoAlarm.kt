@@ -13,7 +13,6 @@ data class GeoAlarm (
     var description: String = "Add Description",
     var geofenceId: String? = null,
     
-    // Activation Window
     var specificDate: LocalDate? = null,
     var dayOfWeek: DayOfWeek? = null,
     var startTime: LocalTime? = null,
