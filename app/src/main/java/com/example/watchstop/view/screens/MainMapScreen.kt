@@ -470,7 +470,7 @@ fun MyGoogleMap() {
                         Slider(
                             value = radius,
                             onValueChange = { radius = it },
-                            valueRange = 10f..250f,
+                            valueRange = 10f..2500f,
                             modifier = Modifier.padding(horizontal = 8.dp)
                         )
                     }

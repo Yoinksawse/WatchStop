@@ -87,7 +87,7 @@ fun GroupsScreen() {
             
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "My GeoAlarms",
+                text = "My Groups",
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (darkmode) Color.White else Color.Black,
@@ -113,7 +113,7 @@ fun GroupsScreen() {
                         style = TextStyle(
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Medium,
-                            color = if (darkmode) Color(0xFF8E8E93) else Color(0xFF8E8E93), // iOS Secondary Label Color
+                            color = if (darkmode) Color(0xFF8E8E93) else Color(0xFF8E8E93),
                             letterSpacing = (-0.4).sp
                         )
                     )

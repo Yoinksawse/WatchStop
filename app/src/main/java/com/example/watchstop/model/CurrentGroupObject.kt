@@ -32,7 +32,7 @@ object CurrentGroupObject {
             activated = true
         }
 
-    fun getCurrentAssignmentEntry(): GroupEntry {
+    fun getCurrentGroupEntry(): GroupEntry {
         return groupEntry
     }
 
@@ -43,9 +43,9 @@ object CurrentGroupObject {
         groupEntry.description = ""
     }
 
-    fun loadCurrentAssignmentEntry(otherAssignmentEntry: GroupEntry) {
-        groupEntry.title = otherAssignmentEntry.title
-        groupEntry.eventDateTime = otherAssignmentEntry.eventDateTime
-        groupEntry.description = otherAssignmentEntry.description
+    fun loadCurrentGroupEntry(otherGroupEntry: GroupEntry) {
+        groupEntry.title = otherGroupEntry.title
+        groupEntry.eventDateTime = otherGroupEntry.eventDateTime
+        groupEntry.description = otherGroupEntry.description
     }
 }

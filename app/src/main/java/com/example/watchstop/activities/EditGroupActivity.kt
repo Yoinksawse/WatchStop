@@ -45,7 +45,7 @@ class EditGroupActivity : AppCompatActivity() {
 
         setContent {
             WatchStopTheme (darkTheme = UserProfileObject.darkmode) {
-                val current = remember { CurrentGroupObject.getCurrentAssignmentEntry() }
+                val current = remember { CurrentGroupObject.getCurrentGroupEntry() }
 
                 var title by remember { mutableStateOf(current.title) }
                 var description by remember { mutableStateOf(current.description) }
@@ -226,7 +226,7 @@ class EditGroupActivity : AppCompatActivity() {
                                     locationSharingEnabled = sharingEnabled.toMutableMap(),
                                     canToggleSharing = canToggle.toMutableMap()
                                 )
-                                CurrentGroupObject.loadCurrentAssignmentEntry(updated)
+                                CurrentGroupObject.loadCurrentGroupEntry(updated)
                                 finish()
                             },
                             modifier = Modifier.align(Alignment.End).padding(top = 10.dp),
