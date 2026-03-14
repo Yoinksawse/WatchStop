@@ -1,6 +1,7 @@
 package com.example.watchstop.activities
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -163,6 +164,13 @@ private fun ProfileScreen() {
             Button(
                 onClick = {
                     UserProfileObject.signOut()
+
+                    // Clear saved credentials from SharedPreferences
+                    val userPrefs = context.getSharedPreferences("WatchStopUserPrefs", Activity.MODE_PRIVATE)
+                    userPrefs.edit()
+                        .remove("currentLoggedInAccount")
+                        .remove("savedPassword")
+                        .apply()
 
                     val intent = Intent(context, MainActivity::class.java).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK

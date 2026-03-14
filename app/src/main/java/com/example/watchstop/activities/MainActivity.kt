@@ -53,6 +53,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
+import androidx.lifecycle.lifecycleScope
 import com.example.watchstop.R
 import com.example.watchstop.data.GeoAlarmsDatabase
 import com.example.watchstop.data.UserGeofencesDatabase
@@ -64,6 +65,7 @@ import com.example.watchstop.view.screens.GeoAlarmsScreen
 import com.example.watchstop.view.screens.RouteTrackerScreen
 import com.example.watchstop.view.screens.GroupsScreen
 import com.example.watchstop.view.ui.theme.WatchStopTheme
+import kotlinx.coroutines.launch
 
 var debugOnboardingOn = false; //TODO: just for debugging; TURN OFF
 
@@ -73,12 +75,42 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Load current user session from Firebase
-        UserProfileObject.syncFromFirebase()
-        
-        // Fetch data from Firebase
-        UserGeofencesDatabase.fetchGeofencesFromFirebaseDB()
-        GeoAlarmsDatabase.fetchAlarmsFromFirebaseDB()
+        // --- Persistent Session Logic ---
+        val userPrefs = getSharedPreferences("WatchStopUserPrefs", MODE_PRIVATE)
+
+        // Save credentials if just returned from a successful Login/SignUp
+        val intentIdentifier = intent.getStringExtra("LOGIN_IDENTIFIER")
+        val intentPassword = intent.getStringExtra("LOGIN_PASSWORD")
+        if (intentIdentifier != null && intentPassword != null) {
+            userPrefs.edit()
+                .putString("currentLoggedInAccount", intentIdentifier)
+                .putString("savedPassword", intentPassword)
+                .apply()
+        }
+
+        // Perform auto sign-in if a session exists and user is not currently logged in
+        val savedEmail = userPrefs.getString("currentLoggedInAccount", "")
+        val savedPassword = userPrefs.getString("savedPassword", "")
+        if (!savedEmail.isNullOrEmpty() && !savedPassword.isNullOrEmpty() && !UserProfileObject.isLoggedIn) {
+            lifecycleScope.launch {
+                try {
+                    UserProfileObject.signIn(savedEmail, savedPassword)
+                    UserProfileObject.syncFromFirebase()
+                    UserGeofencesDatabase.fetchGeofencesFromFirebaseDB()
+                    GeoAlarmsDatabase.fetchAlarmsFromFirebaseDB()
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Auto sign-in failed: ${e.message}")
+                    userPrefs.edit()
+                        .remove("currentLoggedInAccount")
+                        .remove("savedPassword")
+                        .apply()
+                }
+            }
+        } else {
+            UserProfileObject.syncFromFirebase()
+            UserGeofencesDatabase.fetchGeofencesFromFirebaseDB()
+            GeoAlarmsDatabase.fetchAlarmsFromFirebaseDB()
+        }
 
         // --- Onboarding Logic ---
         val prefs = getSharedPreferences("lab4_prefs", MODE_PRIVATE)
@@ -95,8 +127,7 @@ class MainActivity : AppCompatActivity() {
         setContent {
             WatchStopTheme(darkTheme = UserProfileObject.darkmode) {
                 val context = LocalContext.current
-                
-                // Permission logic for background monitoring
+
                 val foregroundLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestMultiplePermissions()
                 ) { permissions ->
@@ -116,8 +147,7 @@ class MainActivity : AppCompatActivity() {
                             Manifest.permission.ACCESS_COARSE_LOCATION
                         ))
                     }
-                    
-                    // Request notification permission for Android 13+
+
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)

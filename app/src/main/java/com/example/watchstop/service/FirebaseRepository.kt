@@ -20,7 +20,7 @@ import java.time.ZoneId
 
 /**
  * Single access point for all Firebase operations.
- * Call from ViewModels or from the Service — never directly from Composables.
+ * Identification is now primarily by Username.
  */
 object FirebaseRepository {
 
@@ -28,8 +28,6 @@ object FirebaseRepository {
     private val db: DatabaseReference get() = Firebase.database.reference
 
     private fun isGuest(): Boolean {
-        // Use UserProfileObject as the source of truth for login status.
-        // It accounts for both being unauthenticated and being logged in as "Guest".
         return !UserProfileObject.isLoggedIn
     }
 
@@ -44,7 +42,10 @@ object FirebaseRepository {
     val currentUser: FirebaseUser? get() = auth.currentUser
     val currentUid: String? get() = auth.currentUser?.uid
 
-    /** Returns the FirebaseUser on success, throws on failure. */
+    /**
+     * Returns the FirebaseUser on success, throws on failure.
+     * [identifier] can be an email or a username.
+     */
     suspend fun signIn(email: String, password: String): FirebaseUser {
         val result = auth.signInWithEmailAndPassword(email, password).await()
         return result.user ?: error("Sign-in returned null user")
@@ -57,7 +58,13 @@ object FirebaseRepository {
         }
         val result = auth.createUserWithEmailAndPassword(email, password).await()
         val user = result.user ?: error("Registration returned null user")
-        db.child("users").child(user.uid).setValue(
+
+        // Write mappings
+        db.child("usernames").child(userName.lowercase()).setValue(email)
+        db.child("uids").child(user.uid).setValue(userName)
+
+        // Write initial profile using Username as the key
+        db.child("users").child(userName).setValue(
             mapOf(
                 "userName" to userName,
                 "userPfpReference" to DEFAULT_PFP,
@@ -71,16 +78,16 @@ object FirebaseRepository {
 
     // ── User Profile ──────────────────────────────────────────────────────
 
-    /** One-shot fetch of the current user's profile from DB. */
-    suspend fun fetchUserProfile(uid: String): UserProfileData? {
-        val snapshot = db.child("users").child(uid).get().await()
+    /** Fetch profile by username. */
+    suspend fun fetchUserProfile(userName: String): UserProfileData? {
+        val snapshot = db.child("users").child(userName).get().await()
         return snapshot.toUserProfileData()
     }
 
-    /** Push local profile changes up to Firebase. Only allowed for proper accounts. */
-    suspend fun saveUserProfile(uid: String, data: UserProfileData) {
+    /** Push profile changes by username. */
+    suspend fun saveUserProfile(data: UserProfileData) {
         ensureProperAccount()
-        db.child("users").child(uid).setValue(
+        db.child("users").child(data.userName).setValue(
             mapOf(
                 "userName" to data.userName,
                 "userPfpReference" to data.userPfpReference,
@@ -89,9 +96,9 @@ object FirebaseRepository {
         ).await()
     }
 
-    /** Real-time listener — emits whenever the profile node changes. */
-    fun observeUserProfile(uid: String): Flow<UserProfileData?> = callbackFlow {
-        val ref = db.child("users").child(uid)
+    /** Real-time profile listener by username. */
+    fun observeUserProfile(userName: String): Flow<UserProfileData?> = callbackFlow {
+        val ref = db.child("users").child(userName)
         val listener = ref.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 trySend(snapshot.toUserProfileData())
@@ -103,16 +110,12 @@ object FirebaseRepository {
 
     // ── Groups ────────────────────────────────────────────────────────────
 
-    /**
-     * Write (create or overwrite) a group. Only allowed for proper accounts.
-     * If [groupId] is null a new push-key is generated and returned.
-     */
-    @RequiresApi(Build.VERSION_CODES.O) //DO NOT REMOVE
+    @RequiresApi(Build.VERSION_CODES.O)
     suspend fun saveGroup(group: GroupEntry, groupId: String? = null): String {
         ensureProperAccount()
         val id = groupId ?: db.child("groups").push().key ?: error("Could not generate group key")
 
-        // Build memberIds map for security rules
+        // memberIds now contains usernames
         val memberIds = group.groupMemberNames.associateWith { true }
         val roles = group.memberRoles.mapValues { it.value.name }
         val locationSharing = group.locationSharingEnabled
@@ -139,33 +142,29 @@ object FirebaseRepository {
         return id
     }
 
-    /** Delete a group entirely. Only allowed for proper accounts. */
     suspend fun deleteGroup(groupId: String) {
         ensureProperAccount()
         db.child("groups").child(groupId).removeValue().await()
     }
 
     /**
-     * Real-time listener for ALL groups the current user is a member of.
-     * Emits a fresh list every time any group changes.
-     * Returns empty flow for Guest accounts.
+     * Observe groups where the user is a member.
+     * [userName] is the identifier.
      */
-    fun observeMyGroups(): Flow<List<Pair<String, GroupEntry>>> = callbackFlow {
-        if (isGuest()) {
+    fun observeMyGroups(userName: String): Flow<List<Pair<String, GroupEntry>>> = callbackFlow {
+        if (isGuest() || userName == GUEST_USERNAME) {
             trySend(emptyList())
             close()
             return@callbackFlow
         }
-        val uid = currentUid ?: run { trySend(emptyList()); close(); return@callbackFlow }
         val ref = db.child("groups")
         val listener = ref.addValueEventListener(object : ValueEventListener {
-            @RequiresApi(Build.VERSION_CODES.O) //DO NOT REMOVE
+            @RequiresApi(Build.VERSION_CODES.O)
             override fun onDataChange(snapshot: DataSnapshot) {
                 val result = snapshot.children.mapNotNull { child ->
                     val id = child.key ?: return@mapNotNull null
                     val entry = child.toGroupEntry() ?: return@mapNotNull null
-                    // Only include groups where current user is a member
-                    if (entry.groupMemberNames.contains(uid)) id to entry else null
+                    if (entry.groupMemberNames.contains(userName)) id to entry else null
                 }
                 trySend(result)
             }
@@ -176,19 +175,15 @@ object FirebaseRepository {
 
     // ── Geo Alarms ────────────────────────────────────────────────────────
 
-    /** 
-     * Real-time listener for the current user's geo alarms.
-     * Returns empty flow for Guest accounts.
-     */
-    fun observeGeoAlarms(): Flow<List<GeoAlarm>> = callbackFlow {
-        if (isGuest()) {
+    fun observeGeoAlarms(userName: String): Flow<List<GeoAlarm>> = callbackFlow {
+        if (isGuest() || userName == GUEST_USERNAME) {
             trySend(emptyList())
             close()
             return@callbackFlow
         }
-        val uid = currentUid ?: run { trySend(emptyList()); close(); return@callbackFlow }
-        val ref = db.child("geoAlarms").child(uid)
+        val ref = db.child("geoAlarms").child(userName)
         val listener = ref.addValueEventListener(object : ValueEventListener {
+            @RequiresApi(Build.VERSION_CODES.O) //DO NOT REMOVE
             override fun onDataChange(snapshot: DataSnapshot) {
                 val alarms = snapshot.children.mapNotNull { it.toGeoAlarm() }
                 trySend(alarms)
@@ -198,40 +193,57 @@ object FirebaseRepository {
         awaitClose { ref.removeEventListener(listener) }
     }
 
-    /** Save a geo alarm. Only allowed for proper accounts. */
-    suspend fun saveGeoAlarm(alarm: GeoAlarm) {
+    suspend fun saveGeoAlarm(userName: String, alarm: GeoAlarm) {
         ensureProperAccount()
-        val uid = currentUid ?: error("Not signed in")
-        db.child("geoAlarms").child(uid).child(alarm.id).setValue(alarm.toMap()).await()
+        db.child("geoAlarms").child(userName).child(alarm.id).setValue(alarm.toMap()).await()
     }
 
-    /** Delete a geo alarm. Only allowed for proper accounts. */
-    suspend fun deleteGeoAlarm(alarmId: String) {
+    suspend fun deleteGeoAlarm(userName: String, alarmId: String) {
         ensureProperAccount()
-        val uid = currentUid ?: error("Not signed in")
-        db.child("geoAlarms").child(uid).child(alarmId).removeValue().await()
+        db.child("geoAlarms").child(userName).child(alarmId).removeValue().await()
     }
 
-    // ── Location Sharing (live updates) ──────────────────────────────────
+    // ── User Geofences ───────────────────────────────────────────────────
 
-    /** Push this user's latest location into a group's location node. Disabled for guests. */
-    fun pushLocation(groupId: String, uid: String, lat: Double, lng: Double) {
-        if (isGuest()) return 
-        db.child("groupLocations").child(groupId).child(uid).setValue(
+    fun observeUserGeofences(userName: String): Flow<List<DataSnapshot>> = callbackFlow {
+        if (isGuest() || userName == GUEST_USERNAME) {
+            trySend(emptyList())
+            close()
+            return@callbackFlow
+        }
+        val ref = db.child("geofences").child(userName)
+        val listener = ref.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                trySend(snapshot.children.toList())
+            }
+            override fun onCancelled(error: DatabaseError) { close(error.toException()) }
+        })
+        awaitClose { ref.removeEventListener(listener) }
+    }
+
+    suspend fun saveUserGeofences(userName: String, data: Any) {
+        ensureProperAccount()
+        db.child("geofences").child(userName).setValue(data).await()
+    }
+
+    // ── Location Sharing ─────────────────────────────────────────────────
+
+    fun pushLocation(groupId: String, userName: String, lat: Double, lng: Double) {
+        if (isGuest() || userName == GUEST_USERNAME) return
+        db.child("groupLocations").child(groupId).child(userName).setValue(
             mapOf("lat" to lat, "lng" to lng, "ts" to ServerValue.TIMESTAMP)
         )
     }
 
-    /** Real-time listener for all member locations in a group. */
     fun observeGroupLocations(groupId: String): Flow<Map<String, LatLngSnapshot>> = callbackFlow {
         val ref = db.child("groupLocations").child(groupId)
         val listener = ref.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val map = snapshot.children.associate { child ->
-                    val uid = child.key ?: ""
+                    val name = child.key ?: ""
                     val lat = child.child("lat").getValue(Double::class.java) ?: 0.0
                     val lng = child.child("lng").getValue(Double::class.java) ?: 0.0
-                    uid to LatLngSnapshot(lat, lng)
+                    name to LatLngSnapshot(lat, lng)
                 }
                 trySend(map)
             }
@@ -252,7 +264,7 @@ private fun DataSnapshot.toUserProfileData(): UserProfileData? {
     return UserProfileData(userName = userName, userPfpReference = pfp, darkmode = dark)
 }
 
-@RequiresApi(Build.VERSION_CODES.O) //DO NOT REMOVE
+@RequiresApi(Build.VERSION_CODES.O)
 private fun DataSnapshot.toGroupEntry(): GroupEntry? {
     val title = child("title").getValue(String::class.java) ?: return null
     val description = child("description").getValue(String::class.java) ?: ""
@@ -262,10 +274,10 @@ private fun DataSnapshot.toGroupEntry(): GroupEntry? {
     val memberNames = child("memberIds").children.mapNotNull { it.key }.toMutableList()
 
     val memberRoles = child("memberRoles").children.associate { snap ->
-        val uid = snap.key ?: ""
+        val name = snap.key ?: ""
         val role = try { GroupRole.valueOf(snap.getValue(String::class.java) ?: "MEMBER") }
         catch (e: Exception) { GroupRole.MEMBER }
-        uid to role
+        name to role
     }.toMutableMap()
 
     val locationSharing = child("locationSharingEnabled").children.associate { snap ->
@@ -302,11 +314,28 @@ private fun GeoAlarm.toMap(): Map<String, Any?> = mapOf(
     "id" to id,
     "name" to name,
     "active" to active,
+    "description" to description,
+    "geofenceId" to geofenceId,
+    "specificDate" to specificDate?.toString(),
+    "dayOfWeek" to dayOfWeek?.name,
+    "startTime" to startTime?.toString(),
+    "endTime" to endTime?.toString()
 )
 
+@RequiresApi(Build.VERSION_CODES.O) //DO NOT REMOVE
 private fun DataSnapshot.toGeoAlarm(): GeoAlarm? {
     val id = child("id").getValue(String::class.java) ?: return null
     val name = child("name").getValue(String::class.java) ?: ""
     val active = child("active").getValue(Boolean::class.java) ?: false
-    return GeoAlarm(id = id, name = name, active = active)
+    return GeoAlarm(
+        id = id,
+        name = name,
+        active = active,
+        description = child("description").getValue(String::class.java) ?: "",
+        geofenceId = child("geofenceId").getValue(String::class.java),
+        specificDate = child("specificDate").getValue(String::class.java)?.let { java.time.LocalDate.parse(it) },
+        dayOfWeek = child("dayOfWeek").getValue(String::class.java)?.let { java.time.DayOfWeek.valueOf(it) },
+        startTime = child("startTime").getValue(String::class.java)?.let { java.time.LocalTime.parse(it) },
+        endTime = child("endTime").getValue(String::class.java)?.let { java.time.LocalTime.parse(it) }
+    )
 }

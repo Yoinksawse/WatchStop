@@ -99,7 +99,6 @@ object UserProfileObject {
         
         externalScope.launch {
             FirebaseRepository.saveUserProfile(
-                uid = currentUid,
                 data = UserProfileData(
                     userName = userName,
                     userPfpReference = userPfpReference,

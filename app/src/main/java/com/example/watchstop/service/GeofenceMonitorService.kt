@@ -15,6 +15,7 @@ import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import com.example.watchstop.activities.MainActivity
 import com.example.watchstop.data.FirebaseRepository
+import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.model.GeoAlarm
 import com.example.watchstop.model.GeofenceArea
 import com.google.android.gms.location.*
@@ -90,7 +91,7 @@ class GeofenceMonitorService : Service() {
      */
     private fun subscribeToAlarms() {
         serviceScope.launch {
-            FirebaseRepository.observeGeoAlarms().collect { alarms ->
+            FirebaseRepository.observeGeoAlarms(UserProfileObject.userName).collect { alarms ->
                 liveAlarms = alarms
                 Log.d("GeofenceService", "Alarms updated from Firebase: ${alarms.size} alarms")
             }

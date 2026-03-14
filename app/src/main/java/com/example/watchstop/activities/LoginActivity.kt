@@ -219,6 +219,12 @@ fun LoginScreen(activity: Activity) {
                                 UserProfileObject.signUp(email, password, username)
                                 Toast.makeText(context, "Signed up successfully", Toast.LENGTH_LONG).show()
                             }
+                            val userPrefs = context.getSharedPreferences("WatchStopUserPrefs", Activity.MODE_PRIVATE)
+                            userPrefs.edit()
+                                .putString("currentLoggedInAccount", email)
+                                .putString("savedPassword", password)
+                                .apply()
+
                             activity.finish()
                             return@launch
                         } catch (e: Exception) {
