@@ -41,10 +41,10 @@ object UserGeofencesDatabase {
      * This should be called after a successful login or app startup.
      */
     fun fetchGeofencesFromFirebaseDB() {
-        val userName = UserProfileObject.userName
-        if (userName == GUEST_USERNAME) return
+        val uid = UserProfileObject.uid ?: return
+        if (UserProfileObject.userName == GUEST_USERNAME) return
 
-        val ref = database.getReference("users").child(userName).child("geofences")
+        val ref = database.getReference("geofences").child(uid)
         ref.addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val newList = mutableListOf<GeofenceArea>()
@@ -86,15 +86,15 @@ object UserGeofencesDatabase {
     }
 
     fun updateGeofencesToFirebaseDB() {
-        val userName = UserProfileObject.userName
-        Log.d("UserGeofencesDatabase", "Attempting to update Firebase for user: $userName")
-        
-        if (userName == GUEST_USERNAME) {
-            Log.w("UserGeofencesDatabase", "User is Guest, skipping Firebase sync")
+        val uid = UserProfileObject.uid ?: return
+        if (UserProfileObject.userName == GUEST_USERNAME) {
+            Log.d("UserGeofencesDatabase", "Skipping Firebase update for Guest account")
             return
         }
+        
+        Log.d("UserGeofencesDatabase", "Attempting to update Firebase for user: $uid")
 
-        val ref = database.getReference("users").child(userName).child("geofences")
+        val ref = database.getReference("geofences").child(uid)
 
         // Convert geofences to a Firebase-friendly format
         val firebaseData = geofences.map { area ->

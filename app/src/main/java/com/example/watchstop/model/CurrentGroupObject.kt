@@ -4,48 +4,41 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import java.time.LocalDateTime
 
+/**
+ * Singleton that holds the group currently being edited in EditGroupActivity.
+ * Acts as a bridge between GroupCard (launcher) and EditGroupActivity (editor).
+ */
 object CurrentGroupObject {
+
     @RequiresApi(Build.VERSION_CODES.O)
-    private val groupEntry = GroupEntry(
+    private var _groupEntry: GroupEntry = GroupEntry(
         title = "",
         eventDateTime = LocalDateTime.now(),
         description = ""
     )
-    var activated: Boolean = false;
 
-    var title: String
-        get() = groupEntry.title
-        set(value) {
-            groupEntry.title = value
-            activated = true
-        }
-    var eventDateTime: LocalDateTime
-        get() = groupEntry.eventDateTime
-        set(value) {
-            groupEntry.eventDateTime = value
-            activated = true
-        }
-    var description: String
-        get() = groupEntry.description
-        set(value) {
-            groupEntry.description = value
-            activated = true
-        }
+    var activated: Boolean = false
 
-    fun getCurrentGroupEntry(): GroupEntry {
-        return groupEntry
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun getCurrentGroupEntry(): GroupEntry = _groupEntry
+
+    /**
+     * Load a group entry for editing. Performs a full deep copy so the
+     * original list in GroupsScreen is not mutated until Save is pressed.
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun loadCurrentGroupEntry(other: GroupEntry) {
+        _groupEntry = GroupEntry(other) // deep copy via copy constructor
+        activated = true
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
-    fun clearCurrentAssignmentEntry() {
-        groupEntry.title = ""
-        groupEntry.eventDateTime = LocalDateTime.now()
-        groupEntry.description = ""
-    }
-
-    fun loadCurrentGroupEntry(otherGroupEntry: GroupEntry) {
-        groupEntry.title = otherGroupEntry.title
-        groupEntry.eventDateTime = otherGroupEntry.eventDateTime
-        groupEntry.description = otherGroupEntry.description
+    fun clear() {
+        _groupEntry = GroupEntry(
+            title = "",
+            eventDateTime = LocalDateTime.now(),
+            description = ""
+        )
+        activated = false
     }
 }

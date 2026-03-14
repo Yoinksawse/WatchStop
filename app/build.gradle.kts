@@ -60,7 +60,6 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.serialization.json)
     
-    implementation(libs.androidx.ui)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.runtime)
     implementation(libs.androidx.compose.foundation.layout)
@@ -73,8 +72,7 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.2.1")
     implementation("com.google.android.gms:play-services-maps:18.2.0")
     implementation("com.google.maps.android:maps-compose:4.3.3")
-    implementation("com.google.android.gms:play-services-location:21.2.0")
-    implementation(libs.foundation)
+    implementation("com.google.android.gms:play-services-location:21.3.0")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

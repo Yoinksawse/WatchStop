@@ -1,57 +1,41 @@
 package com.example.watchstop.activities
 
-import android.content.Intent
+import android.app.Activity
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import com.example.watchstop.data.UserProfile
-import com.example.watchstop.data.UserProfileObject
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.watchstop.data.GUEST_USERNAME
-import com.example.watchstop.data.DEFAULT_PFP
+import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.view.ui.theme.WatchStopTheme
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 
 class LoginActivity : ComponentActivity() {
@@ -62,8 +46,8 @@ class LoginActivity : ComponentActivity() {
 
         setContent {
             val focusManager = LocalFocusManager.current
-            val context = LocalContext.current
             val activity = this
+
             WatchStopTheme (darkTheme = UserProfileObject.darkmode) {
                 Scaffold(
                     topBar = {
@@ -79,7 +63,7 @@ class LoginActivity : ComponentActivity() {
                                     )
                                 }
                             },
-                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                            colors = TopAppBarDefaults.topAppBarColors(
                                 containerColor = if (UserProfileObject.darkmode) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
                                 titleContentColor = if (UserProfileObject.darkmode) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onPrimary,
                                 navigationIconContentColor = if (UserProfileObject.darkmode) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onPrimary
@@ -87,19 +71,16 @@ class LoginActivity : ComponentActivity() {
                         )
                     }
                 ){innerPadding ->
-                    Column(
+                    Box(
                         modifier = Modifier
-                            .clickable (
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ){
-                                focusManager.clearFocus()
-                            }
                             .fillMaxSize()
                             .padding(innerPadding)
-                            .padding(10.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(9.dp),
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                focusManager.clearFocus()
+                            }
                     ){
                         LoginScreen(activity)
                     }
@@ -110,19 +91,32 @@ class LoginActivity : ComponentActivity() {
 }
 
 @Composable
-fun LoginScreen(activity: ComponentActivity) {
-    var username by remember { mutableStateOf("") }
+fun LoginScreen(activity: Activity) {
+    var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false)}
     var errorMessage by remember {mutableStateOf<String?>(null)}
     var isLoginMode by remember { mutableStateOf(true) }
+
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                focusManager.clearFocus()
+                keyboardController?.hide()
+            }
             .padding(horizontal = 24.dp)
-            .padding(top = 50.dp),
+            .padding(top = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
@@ -138,14 +132,23 @@ fun LoginScreen(activity: ComponentActivity) {
             color = MaterialTheme.colorScheme.onBackground
         )
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(10.dp))
+
+        if (!isLoginMode) {
+            OutlinedTextField(
+                value = username,
+                onValueChange = { username = it },
+                label = { Text("Username") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+            )
+        }
 
         OutlinedTextField(
-            value = username,
-            onValueChange = { input ->
-                username = input.filter { it.isLetterOrDigit() }
-            },
-            label = { Text("Username") },
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("Email") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
@@ -154,8 +157,7 @@ fun LoginScreen(activity: ComponentActivity) {
                 focusedLabelColor = MaterialTheme.colorScheme.primary
             ),
             keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Ascii,
-                capitalization = KeyboardCapitalization.None,
+                keyboardType = KeyboardType.Email,
                 imeAction = ImeAction.Next
             )
         )
@@ -186,6 +188,9 @@ fun LoginScreen(activity: ComponentActivity) {
                 unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f),
                 focusedLabelColor = MaterialTheme.colorScheme.primary
             ),
+            keyboardOptions = KeyboardOptions(
+                imeAction = ImeAction.Done
+            )
         )
 
         if (errorMessage != null) {
@@ -200,58 +205,26 @@ fun LoginScreen(activity: ComponentActivity) {
 
         Button(
             onClick = {
-                if (username.isBlank() || password.isBlank()) {
-                    errorMessage = "Please enter username and password"
-                }
-                else if (username == GUEST_USERNAME) {
+                if (email.isBlank() || password.isBlank() || (!isLoginMode && username.isBlank()))
+                    errorMessage = "Please fill in all fields"
+                else if (username == GUEST_USERNAME)
                     errorMessage = "Please enter a valid username"
-                }
                 else {
                     scope.launch {
-                        if (isLoginMode) { // login
-                            val exists = withContext(Dispatchers.IO) {
-                                UserProfile.checkProfileExistsByUsername(context, username)
+                        try {
+                            if (isLoginMode) {
+                                UserProfileObject.signIn(email, password)
+                                Toast.makeText(context, "Logged in successfully", Toast.LENGTH_LONG).show()
+                            } else {
+                                UserProfileObject.signUp(email, password, username)
+                                Toast.makeText(context, "Signed up successfully", Toast.LENGTH_LONG).show()
                             }
-                            val correctPassword = withContext(Dispatchers.IO) {
-                                UserProfile.checkPasswordByUsername(context, username, password)
-                            }
-
-                            if (!exists) {
-                                errorMessage = "Nonexistent user"
-                                return@launch
-                            }
-                            if (!correctPassword) {
-                                errorMessage = "Wrong password"
-                                return@launch
-                            }
-
-                            UserProfileObject.loadUserProfile(context, username)
-                            UserProfileObject.saveCurrentUser(context)
-
-                            Toast.makeText(context, "Logged in successfully", Toast.LENGTH_LONG).show()
-                        } else { // sign up
-                            val exists = withContext(Dispatchers.IO) {
-                                UserProfile.checkProfileExistsByUsername(context, username)
-                            }
-                            if (exists) {
-                                errorMessage = "This username was taken"
-                                return@launch
-                            }
-
-                            // Explicitly set ALL fields for the new user profile
-                            UserProfileObject.userName = username
-                            UserProfileObject.password = password
-                            UserProfileObject.userPfpReference = DEFAULT_PFP
-                            UserProfileObject.darkmode = false
-
-                            UserProfileObject.saveUserProfile(context)
-                            UserProfileObject.saveCurrentUser(context)
-
-                            Toast.makeText(context, "Signed up successfully", Toast.LENGTH_LONG).show()
+                            activity.finish()
+                            return@launch
+                        } catch (e: Exception) {
+                            errorMessage = e.localizedMessage ?: e.toString()
+                            //TODO: friendly error messages
                         }
-
-                        UserProfile.loggedIn = true
-                        activity.finish()
                     }
                 }
             },
@@ -260,7 +233,10 @@ fun LoginScreen(activity: ComponentActivity) {
                 .height(50.dp),
             shape = RoundedCornerShape(8.dp)
         ) {
-            Text(text = if (isLoginMode) "Sign In" else "Sign Up", fontSize = 16.sp)
+            Text(
+                text = if (isLoginMode) "Sign In" else "Sign Up",
+                fontSize = 16.sp
+            )
         }
 
         TextButton(onClick = {

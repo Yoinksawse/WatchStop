@@ -11,7 +11,6 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import java.time.LocalDate
 import java.time.LocalTime
-import java.time.format.DateTimeFormatter
 
 object GeoAlarmsDatabase {
     private val database = FirebaseDatabase.getInstance("https://watchstopdb-default-rtdb.firebaseio.com")
@@ -37,10 +36,10 @@ object GeoAlarmsDatabase {
     }
 
     fun fetchAlarmsFromFirebaseDB() {
-        val userName = UserProfileObject.userName
-        if (userName == GUEST_USERNAME) return
+        val uid = UserProfileObject.uid ?: return
+        if (UserProfileObject.userName == GUEST_USERNAME) return
 
-        val ref = database.getReference("users").child(userName).child("alarms")
+        val ref = database.getReference("geoAlarms").child(uid)
         ref.addListenerForSingleValueEvent(object : ValueEventListener {
             @RequiresApi(Build.VERSION_CODES.O)
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -74,12 +73,15 @@ object GeoAlarmsDatabase {
     }
 
     fun updateAlarmsToFirebaseDB() {
-        val userName = UserProfileObject.userName
-        if (userName == GUEST_USERNAME) return
+        val uid = UserProfileObject.uid ?: return
+        if (UserProfileObject.userName == GUEST_USERNAME) {
+            Log.d("GeoAlarmsDatabase", "Skipping Firebase update for Guest account")
+            return
+        }
 
-        val ref = database.getReference("users").child(userName).child("alarms")
-        val firebaseData = alarms.map { alarm ->
-            mapOf(
+        val ref = database.getReference("geoAlarms").child(uid)
+        val firebaseData = alarms.associate { alarm ->
+            alarm.id to mapOf(
                 "id" to alarm.id,
                 "name" to alarm.name,
                 "active" to alarm.active,

@@ -1,59 +1,40 @@
 package com.example.watchstop.view.screens
 
+import android.content.Intent
 import android.os.Build
 import androidx.annotation.RequiresApi
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.FloatingActionButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.watchstop.activities.LoginActivity
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.model.GroupEntry
 import com.example.watchstop.model.GroupRole
 import com.example.watchstop.view.GroupCard
-import com.example.watchstop.view.UserRow
 import com.example.watchstop.view.ui.theme.WatchStopTheme
-import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun GroupsScreen() {
-    val assignments = remember { mutableStateListOf<GroupEntry>() }
+    val groups = remember { mutableStateListOf<GroupEntry>() }
+    var showCreationDialog by remember { mutableStateOf(false) }
+    var showLoginPrompt by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     WatchStopTheme(darkTheme = darkmode) {
         Scaffold(
@@ -63,79 +44,173 @@ fun GroupsScreen() {
                     contentColor = Color.White,
                     shape = RoundedCornerShape(16.dp),
                     onClick = {
-                        val currentUser = UserProfileObject.userName
-                        assignments.add(
-                            GroupEntry(
-                                title = "New Group",
-                                eventDateTime = LocalDateTime.now(),
-                                description = "Group for Event X / Family Y / Organisation Z",
-                                groupMemberNames = mutableListOf(currentUser),
-                                memberRoles = mutableMapOf(currentUser to GroupRole.SUPER_ADMIN),
-                                canToggleSharing = mutableMapOf(currentUser to true)
-                            )
-                        )
+                        if (UserProfileObject.isLoggedIn) {
+                            showCreationDialog = true
+                        } else {
+                            showLoginPrompt = true
+                        }
                     }
                 ) {
-                    Icon(
-                        Icons.Default.Add,
-                        contentDescription = "Create new group",
-                        modifier = Modifier.size(24.dp)
-                    )
+                    Icon(Icons.Default.Add, contentDescription = "Create new group", modifier = Modifier.size(24.dp))
                 }
             }
         ) { innerPadding ->
-            
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "My Groups",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (darkmode) Color.White else Color.Black,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
+            Column(modifier = Modifier.padding(innerPadding)) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "My Groups",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (darkmode) Color.White else Color.Black,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
 
-            if (assignments.isEmpty()) {
-                Card(
-                    shape = RoundedCornerShape(12.dp),
-                    elevation = CardDefaults.cardElevation(0.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (darkmode) Color(0xFF1C1C1E) else Color.White
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(32.dp)
-                ) {
-                    Text(
-                        text = "No Groups",
-                        modifier = Modifier
-                            .padding(vertical = 40.dp, horizontal = 16.dp)
-                            .align(Alignment.CenterHorizontally),
-                        style = TextStyle(
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = if (darkmode) Color(0xFF8E8E93) else Color(0xFF8E8E93),
-                            letterSpacing = (-0.4).sp
-                        )
-                    )
-                }
-            }
-            LazyColumn(
-                modifier = Modifier.padding(innerPadding)
-            ) {
-                itemsIndexed(assignments) { i, group ->
-                    GroupCard(
-                        groupEntryParameter = group,
-
-                        onEdited = { updatedEntry ->
-                            assignments[i] = updatedEntry
-                        },
-
-                        onDeleted = {
-                            assignments.removeAt(i)
+                if (groups.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            elevation = CardDefaults.cardElevation(0.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (darkmode) Color(0xFF1C1C1E) else Color.White
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp)
+                        ) {
+                            Text(
+                                text = "No Groups yet — tap + to create one",
+                                modifier = Modifier
+                                    .padding(vertical = 40.dp, horizontal = 16.dp)
+                                    .align(Alignment.CenterHorizontally),
+                                style = TextStyle(
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color(0xFF8E8E93),
+                                    letterSpacing = (-0.4).sp
+                                )
+                            )
                         }
-                    )
+                    }
+                } else {
+                    LazyColumn {
+                        itemsIndexed(groups) { i, group ->
+                            GroupCard(
+                                groupEntryParameter = group,
+                                onEdited = { updated -> groups[i] = updated },
+                                onDeleted = { groups.removeAt(i) }
+                            )
+                        }
+                    }
                 }
             }
         }
+
+        if (showLoginPrompt) {
+            AlertDialog(
+                onDismissRequest = { showLoginPrompt = false },
+                title = { Text("Login Required") },
+                text = { Text("You must be logged in to create a group.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showLoginPrompt = false
+                            val intent = Intent(context, LoginActivity::class.java)
+                            context.startActivity(intent)
+                        }
+                    ) {
+                        Text("Login")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showLoginPrompt = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        // ── Group Creation Dialog ─────────────────────────────────────────
+        if (showCreationDialog) {
+            GroupCreationDialog(
+                onDismiss = { showCreationDialog = false },
+                onCreate = { newGroup ->
+                    groups.add(newGroup)
+                    showCreationDialog = false
+                }
+            )
+        }
     }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+private fun GroupCreationDialog(
+    onDismiss: () -> Unit,
+    onCreate: (GroupEntry) -> Unit
+) {
+    var groupTitle by remember { mutableStateOf("") }
+    var selectedRole by remember { mutableStateOf(GroupRole.SUPER_ADMIN) }
+    val currentUser = UserProfileObject.userName
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New Group") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = groupTitle,
+                    onValueChange = { groupTitle = it },
+                    label = { Text("Group Name") },
+                    singleLine = true
+                )
+
+                Text("Your role as creator:", style = MaterialTheme.typography.bodyMedium)
+
+                // Role selector
+                listOf(
+                    GroupRole.SUPER_ADMIN to "Super Admin — cannot be removed, full control",
+                    GroupRole.ADMIN to "Admin — can be voted out by other members"
+                ).forEach { (role, description) ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        RadioButton(
+                            selected = selectedRole == role,
+                            onClick = { selectedRole = role }
+                        )
+                        Column {
+                            Text(role.displayName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text(description, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (groupTitle.isNotBlank()) {
+                        val entry = GroupEntry(
+                            title = groupTitle.trim(),
+                            eventDateTime = LocalDateTime.now(),
+                            description = "",
+                            groupMemberNames = mutableListOf(currentUser),
+                            memberRoles = mutableMapOf(currentUser to selectedRole),
+                            locationSharingEnabled = mutableMapOf(currentUser to false),
+                            canToggleSharing = mutableMapOf(currentUser to true)
+                        )
+                        onCreate(entry)
+                    }
+                },
+                enabled = groupTitle.isNotBlank()
+            ) { Text("Create") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }

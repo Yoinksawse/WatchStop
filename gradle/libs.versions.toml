@@ -10,26 +10,15 @@ lifecycleRuntimeKtx = "2.10.0"
 activityCompose = "1.12.2"
 composeBom = "2024.09.00"
 material3 = "1.4.0"
-ui = "1.10.1"
-foundation = "1.10.1"
-runtime = "1.10.1"
-foundationLayout = "1.10.1"
-foundationVersion = "1.10.2"
-uiVersion = "1.10.2"
-runtimeVersion = "1.10.2"
-foundationLayoutVersion = "1.10.2"
-uiText = "1.10.2"
-animationCore = "1.10.2"
 kotlinxSerialization = "1.6.0"
 datastore = "1.0.0"
 roomKtx = "2.8.4"
 appcompat = "1.7.1"
 material = "1.13.0"
 firebaseBom = "34.10.0"
-androidxFoundation = "1.10.4"
 
 [libraries]
-androidx-compose-material = { module = "androidx.compose.material:material" }
+androidx-compose-material = { group = "androidx.compose.material", name = "material" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coilCompose" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -47,16 +36,11 @@ androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-te
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
-androidx-ui = { group = "androidx.compose.ui", name = "ui", version.ref = "ui" }
-androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
-androidx-compose-runtime = { group = "androidx.compose.runtime", name = "runtime", version.ref = "runtime" }
-androidx-compose-foundation-layout = { group = "androidx.compose.foundation", name = "foundation-layout", version.ref = "foundationLayout" }
-androidx-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundationVersion" }
-ui = { group = "androidx.compose.ui", name = "ui", version.ref = "uiVersion" }
-androidx-runtime = { group = "androidx.compose.runtime", name = "runtime", version.ref = "runtimeVersion" }
-androidx-foundation-layout = { group = "androidx.compose.foundation", name = "foundation-layout", version.ref = "foundationLayoutVersion" }
-androidx-compose-ui-text = { group = "androidx.compose.ui", name = "ui-text", version.ref = "uiText" }
-androidx-compose-animation-core = { group = "androidx.compose.animation", name = "animation-core", version.ref = "animationCore" }
+androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
+androidx-compose-runtime = { group = "androidx.compose.runtime", name = "runtime" }
+androidx-compose-foundation-layout = { group = "androidx.compose.foundation", name = "foundation-layout" }
+androidx-compose-ui-text = { group = "androidx.compose.ui", name = "ui-text" }
+androidx-compose-animation-core = { group = "androidx.compose.animation", name = "animation-core" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "roomKtx" }
@@ -65,7 +49,6 @@ material = { group = "com.google.android.material", name = "material", version.r
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-database = { group = "com.google.firebase", name = "firebase-database" }
 firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }
-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "androidxFoundation" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

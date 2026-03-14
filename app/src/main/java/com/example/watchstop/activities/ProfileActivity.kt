@@ -26,14 +26,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.example.watchstop.R
-import com.example.watchstop.data.GUEST_USERNAME
-import com.example.watchstop.data.UserProfile
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.view.ui.theme.CarbonGrey
 import com.example.watchstop.view.ui.theme.Purple40
 import com.example.watchstop.view.ui.theme.WatchStopTheme
-import kotlinx.coroutines.launch
 
 class ProfileActivity : ComponentActivity() {
     @SuppressLint("UnsafeIntentLaunch")
@@ -43,7 +40,7 @@ class ProfileActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            WatchStopTheme (darkTheme = UserProfileObject.darkmode) {
+            WatchStopTheme (darkTheme = darkmode) {
                 val context = LocalContext.current
                 Scaffold(
                     topBar = {
@@ -59,8 +56,8 @@ class ProfileActivity : ComponentActivity() {
                             },
                             colors = TopAppBarDefaults.topAppBarColors(
                                 containerColor = if (darkmode) CarbonGrey else Purple40,
-                                titleContentColor = if (darkmode) Color.White else Color.Black,
-                                navigationIconContentColor = if (darkmode) Color.White else Color.Black
+                                titleContentColor = Color.White,
+                                navigationIconContentColor = Color.White
                             ),
                         )
                     },
@@ -70,7 +67,7 @@ class ProfileActivity : ComponentActivity() {
                             .padding(innerPadding)
                             .fillMaxSize()
                     ) {
-                        if (UserProfile.loggedIn) {
+                        if (UserProfileObject.isLoggedIn) {
                             ProfileScreen()
                         }
                         else {
@@ -152,42 +149,37 @@ private fun ProfileScreen() {
         ) {
             Text(text = "Dark Mode", style = MaterialTheme.typography.titleMedium)
             Switch(
-                checked = UserProfileObject.darkmode,
+                checked = darkmode,
                 onCheckedChange = {
-                    UserProfileObject.darkmode = it
-                    scope.launch {
-                        UserProfileObject.saveUserProfile(context)
-                    }
+                    darkmode = it
+                    UserProfileObject.pushToFirebase()
                 }
             )
         }
 
         Spacer(modifier = Modifier.weight(1f))
 
-        Button(
-            onClick = {
-                UserProfile.loggedIn = false
-                scope.launch {
-                    UserProfileObject.saveUserProfile(context)
-                    UserProfileObject.userName = GUEST_USERNAME
-                    UserProfileObject.saveCurrentUser(context)
-                }
+        if (UserProfileObject.isLoggedIn) {
+            Button(
+                onClick = {
+                    UserProfileObject.signOut()
 
-                val intent = Intent(context, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                }
-                context.startActivity(intent)
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(50.dp),
-            shape = RoundedCornerShape(8.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.error,
-                contentColor = MaterialTheme.colorScheme.onError
-            )
-        ) {
-            Text("Logout")
+                    val intent = Intent(context, MainActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    }
+                    context.startActivity(intent)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
+                )
+            ) {
+                Text("Logout")
+            }
         }
         Spacer(modifier = Modifier.height(32.dp))
     }

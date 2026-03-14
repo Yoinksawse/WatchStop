@@ -56,7 +56,6 @@ import androidx.core.content.edit
 import com.example.watchstop.R
 import com.example.watchstop.data.GeoAlarmsDatabase
 import com.example.watchstop.data.UserGeofencesDatabase
-import com.example.watchstop.data.UserProfile
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.service.GeofenceMonitorService
 import com.example.watchstop.view.BottomTabBar
@@ -74,8 +73,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Load current user session
-        UserProfileObject.loadCurrentUser(this)
+        // Load current user session from Firebase
+        UserProfileObject.syncFromFirebase()
         
         // Fetch data from Firebase
         UserGeofencesDatabase.fetchGeofencesFromFirebaseDB()
@@ -128,7 +127,7 @@ class MainActivity : AppCompatActivity() {
 
                 MainScreen(onToggleDarkMode = {
                     UserProfileObject.darkmode = !UserProfileObject.darkmode
-                    UserProfileObject.saveUserProfile(this)
+                    UserProfileObject.pushToFirebase()
                 })
             }
         }
@@ -239,7 +238,7 @@ fun MainScreen(onToggleDarkMode: () -> Unit) {
 
                         IconButton(
                             onClick = {
-                                if (UserProfile.loggedIn) {
+                                if (UserProfileObject.isLoggedIn) {
                                     val intent = Intent(context, ProfileActivity::class.java)
                                     context.startActivity(intent)
                                 }

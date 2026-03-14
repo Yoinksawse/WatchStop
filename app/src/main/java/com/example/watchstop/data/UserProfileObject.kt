@@ -1,135 +1,141 @@
 package com.example.watchstop.data
 
-import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import kotlinx.serialization.json.Json
-import java.io.File
+import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 const val GUEST_USERNAME = "Guest"
+const val GUEST_EMAIL = "a@b.c"
 const val DEFAULT_PFP = "defaultpfp"
+const val INITIAL_DARKMODE = true
 
+/**
+ * In-memory state for the currently signed-in user.
+ *
+ * Source of truth is now Firebase Auth + Realtime Database.
+ */
 object UserProfileObject {
 
+    private val scope = CoroutineScope(Dispatchers.Main)
+    private var profileJob: Job? = null
+
+    // ── Compose-observable state ──────────────────────────────────────────
     var userName: String by mutableStateOf(GUEST_USERNAME)
-    var password: String by mutableStateOf("")
     var userPfpReference: String by mutableStateOf(DEFAULT_PFP)
-    var darkmode: Boolean by mutableStateOf(true)
+    var darkmode: Boolean by mutableStateOf(INITIAL_DARKMODE)
+    var email: String by mutableStateOf(GUEST_EMAIL)
 
-    // groupId -> role (0: superadmin, 1: admin, 2: user)
-    private val groupIdToRoleMap: MutableMap<Int, Int> = mutableMapOf()
+    /** Reactive login state for Compose. 
+     *  True only if the user is authenticated AND has a non-Guest username.
+     */
+    var isLoggedIn: Boolean by mutableStateOf(false)
+        private set
 
-    private val json = Json { ignoreUnknownKeys = true }
+    val uid: String?
+        get() = FirebaseAuth.getInstance().currentUser?.uid
 
-    fun loadUserProfile(context: Context, username: String) {
-        val file = File(context.filesDir, "user_profiles.json")
-        if (!file.exists()) return
-
-        val profiles = try {
-            json.decodeFromString<List<UserProfileData>>(file.readText())
-        } catch (e: Exception) {
-            emptyList()
-        }
-
-        val profile = profiles.find { it.userName == username }
-        profile?.let {
-            this.userName = it.userName
-            this.password = it.password
-            this.userPfpReference = it.userPfpReference
-            this.darkmode = it.darkmode
-        }
-    }
-
-    fun saveUserProfile(context: Context) {
-        if (userName == GUEST_USERNAME) return
-
-        val file = File(context.filesDir, "user_profiles.json")
-        val profiles = if (file.exists()) {
-            try {
-                json.decodeFromString<List<UserProfileData>>(file.readText()).toMutableList()
-            } catch (e: Exception) {
-                mutableListOf()
+    init {
+        // Automatically sync when auth state changes
+        FirebaseAuth.getInstance().addAuthStateListener { auth ->
+            val user = auth.currentUser
+            if (user != null) {
+                // We have an auth session, start fetching profile to check Guest status
+                startObservingProfile(user.uid)
+            } else {
+                stopObservingProfile()
+                resetToGuest()
             }
-        } else {
-            mutableListOf()
         }
-
-        val index = profiles.indexOfFirst { it.userName == userName }
-        val currentData = UserProfileData(userName, userPfpReference, password, darkmode)
-        
-        if (index != -1) {
-            profiles[index] = currentData
-        } else {
-            profiles.add(currentData)
-        }
-
-        file.writeText(json.encodeToString(kotlinx.serialization.builtins.ListSerializer(UserProfileData.serializer()), profiles))
     }
 
-    fun saveCurrentUser(context: Context) {
-        val file = File(context.filesDir, "current_user.json")
-        file.writeText(json.encodeToString(AppSession.serializer(), AppSession(userName)))
+    private fun resetToGuest() {
+        userName = GUEST_USERNAME
+        userPfpReference = DEFAULT_PFP
+        isLoggedIn = false
+        darkmode = true
     }
 
-    fun loadCurrentUser(context: Context) {
-        val file = File(context.filesDir, "current_user.json")
-        if (file.exists()) {
-            try {
-                val session = json.decodeFromString(AppSession.serializer(), file.readText())
-                if (session.currentUser != GUEST_USERNAME) {
-                    loadUserProfile(context, session.currentUser)
-                    UserProfile.loggedIn = true
+    // ── Sync from Firebase ────────────────────────────────────────────────
+
+    private fun startObservingProfile(uid: String) {
+        profileJob?.cancel()
+        profileJob = scope.launch {
+            FirebaseRepository.observeUserProfile(uid).collect { profile ->
+                if (profile != null) {
+                    userName = profile.userName
+                    userPfpReference = profile.userPfpReference
+                    darkmode = profile.darkmode
+                    // isLoggedIn is true ONLY if the account is not named "Guest"
+                    isLoggedIn = !userName.equals(GUEST_USERNAME, ignoreCase = true)
+                } else {
+                    // If no profile found, treat as Guest until one is created
+                    userName = GUEST_USERNAME
+                    isLoggedIn = false
                 }
-            } catch (e: Exception) {
-                userName = GUEST_USERNAME
             }
         }
     }
 
-    //group operations
-    fun addGroup(groupId: Int, role: Int) {
-        require(role in 0..2) { "Invalid role value" }
-        groupIdToRoleMap[groupId] = role
+    private fun stopObservingProfile() {
+        profileJob?.cancel()
+        profileJob = null
     }
 
-    fun removeGroup(groupId: Int) {
-        groupIdToRoleMap.remove(groupId)
+    /** Manually trigger a sync if needed (e.g. on app startup). */
+    fun syncFromFirebase(externalScope: CoroutineScope = CoroutineScope(Dispatchers.Main)) {
+        val currentUid = uid ?: return
+        startObservingProfile(currentUid)
     }
 
-    //role methods (read-only)
-    fun getRole(groupId: Int): Int? {
-        return groupIdToRoleMap[groupId]
+    fun pushToFirebase(externalScope: CoroutineScope = CoroutineScope(Dispatchers.IO)) {
+        val currentUid = uid ?: return
+        // Do not allow Guest accounts to persist changes to the backend
+        if (!isLoggedIn) return 
+        
+        externalScope.launch {
+            FirebaseRepository.saveUserProfile(
+                uid = currentUid,
+                data = UserProfileData(
+                    userName = userName,
+                    userPfpReference = userPfpReference,
+                    darkmode = darkmode
+                )
+            )
+        }
     }
 
-    fun getGroupIdToRoleMap(): Map<Int, Int> {
-        return groupIdToRoleMap.toMap() // returns immutable copy
+    // ── Auth helpers ──────────────────────────────────────────────────────
+
+    suspend fun signIn(email: String, password: String) {
+        val firebaseUser = FirebaseRepository.signIn(email, password)
+        this.email = firebaseUser.email.let{email.substringBefore("@")}
+        this.userName = firebaseUser.email.let{email.substringBefore("@")}
+        this.isLoggedIn = true
     }
 
-    fun isSuperAdmin(groupId: Int): Boolean {
-        return groupIdToRoleMap[groupId] == 0
+    suspend fun signUp(email: String, password: String, userName: String) {
+        FirebaseRepository.signUp(email, password, userName)
+        signIn(email, password) //DO NOT REMOVE
+
+        this.userName = userName.ifEmpty { email.substringBefore("@") }
+        this.userPfpReference = DEFAULT_PFP
+        this.darkmode = INITIAL_DARKMODE
+        this.isLoggedIn = true
     }
 
-    fun isAdmin(groupId: Int): Boolean {
-        return groupIdToRoleMap[groupId] == 1
+    fun signOut() {
+        FirebaseRepository.signOut()
+        isLoggedIn = false
     }
 
-    fun isMember(groupId: Int): Boolean {
-        return groupIdToRoleMap[groupId] == 2
+    fun inDarkMode() = darkmode
+    fun setDarkMode(value: Boolean) {
+        darkmode = value
+        pushToFirebase()
     }
-
-    //dark mode
-    fun inDarkMode(): Boolean {
-        return darkmode
-    }
-
-    fun setDarkMode(tf: Boolean) {
-        darkmode = tf
-    }
-
-    // Placeholder for purchased items if needed, or remove if not
-    fun getPurchasedItems(): List<DummyProduct> = emptyList()
 }
-
-@kotlinx.serialization.Serializable
-data class DummyProduct(val name: String)
