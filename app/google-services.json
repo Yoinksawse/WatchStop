@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "593371161309",
+    "firebase_url": "https://watchstopdb-default-rtdb.asia-southeast1.firebasedatabase.app",
     "project_id": "watchstopdb",
     "storage_bucket": "watchstopdb.firebasestorage.app"
   },

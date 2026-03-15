@@ -2,10 +2,11 @@ package com.example.watchstop.view.screens
 
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -24,34 +25,45 @@ import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.model.GroupEntry
 import com.example.watchstop.model.GroupRole
+import com.example.watchstop.service.FirebaseRepository
 import com.example.watchstop.view.GroupCard
 import com.example.watchstop.view.ui.theme.WatchStopTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun GroupsScreen() {
-    val groups = remember { mutableStateListOf<GroupEntry>() }
+    val appScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
+    val context = LocalContext.current
+
+    // uid is reactive: if auth resolves after first composition, a new Flow is created
+    val uid by remember { derivedStateOf { UserProfileObject.uid ?: "" } }
+    val myGroups by remember(uid) {
+        FirebaseRepository.observeMyGroups(uid)
+    }.collectAsState(initial = emptyList())
+
     var showCreationDialog by remember { mutableStateOf(false) }
     var showLoginPrompt by remember { mutableStateOf(false) }
-    val context = LocalContext.current
 
     WatchStopTheme(darkTheme = darkmode) {
         Scaffold(
             floatingActionButton = {
                 FloatingActionButton(
-                    containerColor = if (darkmode) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
+                    containerColor = if (darkmode) MaterialTheme.colorScheme.secondary
+                    else MaterialTheme.colorScheme.primary,
                     contentColor = Color.White,
                     shape = RoundedCornerShape(16.dp),
                     onClick = {
-                        if (UserProfileObject.isLoggedIn) {
-                            showCreationDialog = true
-                        } else {
-                            showLoginPrompt = true
-                        }
+                        if (UserProfileObject.isLoggedIn) showCreationDialog = true
+                        else showLoginPrompt = true
                     }
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Create new group", modifier = Modifier.size(24.dp))
+                    Icon(Icons.Default.Add, contentDescription = "Create group",
+                        modifier = Modifier.size(24.dp))
                 }
             }
         ) { innerPadding ->
@@ -65,20 +77,15 @@ fun GroupsScreen() {
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
 
-                if (groups.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
+                if (myGroups.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Card(
                             shape = RoundedCornerShape(12.dp),
                             elevation = CardDefaults.cardElevation(0.dp),
                             colors = CardDefaults.cardColors(
                                 containerColor = if (darkmode) Color(0xFF1C1C1E) else Color.White
                             ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(32.dp)
+                            modifier = Modifier.fillMaxWidth().padding(32.dp)
                         ) {
                             Text(
                                 text = "No Groups yet — tap + to create one",
@@ -96,11 +103,20 @@ fun GroupsScreen() {
                     }
                 } else {
                     LazyColumn {
-                        itemsIndexed(groups) { i, group ->
+                        items(myGroups) { (groupId, group) ->
                             GroupCard(
+                                groupId = groupId,
                                 groupEntryParameter = group,
-                                onEdited = { updated -> groups[i] = updated },
-                                onDeleted = { groups.removeAt(i) }
+                                onEdited = { updated ->
+                                    appScope.launch {
+                                        FirebaseRepository.saveGroup(updated, groupId)
+                                    }
+                                },
+                                onDeleted = {
+                                    appScope.launch {
+                                        FirebaseRepository.deleteGroup(groupId)
+                                    }
+                                }
                             )
                         }
                     }
@@ -108,39 +124,55 @@ fun GroupsScreen() {
             }
         }
 
+        // ── Login prompt ──────────────────────────────────────────────────
         if (showLoginPrompt) {
             AlertDialog(
                 onDismissRequest = { showLoginPrompt = false },
                 title = { Text("Login Required") },
                 text = { Text("You must be logged in to create a group.") },
                 confirmButton = {
-                    TextButton(
-                        onClick = {
-                            showLoginPrompt = false
-                            val intent = Intent(context, LoginActivity::class.java)
-                            context.startActivity(intent)
-                        }
-                    ) {
-                        Text("Login")
-                    }
+                    TextButton(onClick = {
+                        showLoginPrompt = false
+                        context.startActivity(Intent(context, LoginActivity::class.java))
+                    }) { Text("Login") }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showLoginPrompt = false }) {
-                        Text("Cancel")
+                    TextButton(onClick = { showLoginPrompt = false }) { Text("Cancel") }
+                }
+            )
+        }
+
+        // ── Group creation dialog ─────────────────────────────────────────
+        var pendingGroup by remember { mutableStateOf<GroupEntry?>(null) }
+
+        if (showCreationDialog) {
+            GroupCreationDialog(
+                onDismiss = { showCreationDialog = false },
+                onMake = { newGroup ->
+                    Log.d("GroupsScreen", "onMake called — uid=${UserProfileObject.uid}, title=${newGroup.title}, members=${newGroup.groupMemberNames}")
+
+                    showCreationDialog = false
+                    appScope.launch {
+                        try {
+                            FirebaseRepository.saveGroup(newGroup)
+                            Log.d("GroupsScreen", "saveGroup SUCCESS")
+                        } catch (e: Exception) {
+                            Log.e("GroupsScreen", "saveGroup FAILED: ${e.message}", e)
+                        }
                     }
                 }
             )
         }
 
-        // ── Group Creation Dialog ─────────────────────────────────────────
-        if (showCreationDialog) {
-            GroupCreationDialog(
-                onDismiss = { showCreationDialog = false },
-                onCreate = { newGroup ->
-                    groups.add(newGroup)
-                    showCreationDialog = false
-                }
-            )
+        LaunchedEffect(pendingGroup) {
+            val group = pendingGroup ?: return@LaunchedEffect
+            try {
+                FirebaseRepository.saveGroup(group)
+                Log.d("GroupsScreen", "saveGroup SUCCESS")
+            } catch (e: Exception) {
+                Log.e("GroupsScreen", "saveGroup FAILED: ${e.message}", e)
+            }
+            pendingGroup = null
         }
     }
 }
@@ -149,11 +181,10 @@ fun GroupsScreen() {
 @Composable
 private fun GroupCreationDialog(
     onDismiss: () -> Unit,
-    onCreate: (GroupEntry) -> Unit
+    onMake: (GroupEntry) -> Unit
 ) {
     var groupTitle by remember { mutableStateOf("") }
     var selectedRole by remember { mutableStateOf(GroupRole.SUPER_ADMIN) }
-    val currentUser = UserProfileObject.userName
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -166,10 +197,7 @@ private fun GroupCreationDialog(
                     label = { Text("Group Name") },
                     singleLine = true
                 )
-
                 Text("Your role as creator:", style = MaterialTheme.typography.bodyMedium)
-
-                // Role selector
                 listOf(
                     GroupRole.SUPER_ADMIN to "Super Admin — cannot be removed, full control",
                     GroupRole.ADMIN to "Admin — can be voted out by other members"
@@ -184,7 +212,8 @@ private fun GroupCreationDialog(
                         )
                         Column {
                             Text(role.displayName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            Text(description, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(description, fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -194,16 +223,16 @@ private fun GroupCreationDialog(
             TextButton(
                 onClick = {
                     if (groupTitle.isNotBlank()) {
+                        // Read uid at click time — guaranteed non-null here since isLoggedIn was true
+                        val currentUid = UserProfileObject.uid ?: return@TextButton
                         val entry = GroupEntry(
                             title = groupTitle.trim(),
                             eventDateTime = LocalDateTime.now(),
-                            description = "",
-                            groupMemberNames = mutableListOf(currentUser),
-                            memberRoles = mutableMapOf(currentUser to selectedRole),
-                            locationSharingEnabled = mutableMapOf(currentUser to false),
-                            canToggleSharing = mutableMapOf(currentUser to true)
-                        )
-                        onCreate(entry)
+                            description = ""
+                        ).apply {
+                            addMember(currentUid, selectedRole)
+                        }
+                        onMake(entry)
                     }
                 },
                 enabled = groupTitle.isNotBlank()

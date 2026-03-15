@@ -29,27 +29,34 @@ import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.model.CurrentGroupObject
 import com.example.watchstop.model.GroupEntry
 import com.example.watchstop.model.GroupRole
+import com.example.watchstop.model.TripStatus
+import com.example.watchstop.service.FirebaseRepository
 import com.example.watchstop.view.ui.theme.WatchStopTheme
+import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun GroupCard(
+    groupId: String,
     groupEntryParameter: GroupEntry,
     onEdited: (GroupEntry) -> Unit,
     onDeleted: () -> Unit
 ) {
     val context = LocalContext.current
-    val currentUser = UserProfileObject.userName
-    val userRole = groupEntryParameter.memberRoles[currentUser] ?: GroupRole.MEMBER
+    val coroutineScope = rememberCoroutineScope()
+
+    // Current user's UID — read at composition, stable after login
+    val currentUid = UserProfileObject.uid ?: ""
+    val userRole = groupEntryParameter.memberRoles[currentUid] ?: GroupRole.MEMBER
     val isAdmin = userRole == GroupRole.ADMIN || userRole == GroupRole.SUPER_ADMIN
     val isSuperAdmin = userRole == GroupRole.SUPER_ADMIN
 
-    // ── Stateful copy so local actions reflect immediately ──────────────────
+    // Local copy so optimistic UI updates feel instant before Firebase confirms
     var group by remember(groupEntryParameter) { mutableStateOf(GroupEntry(groupEntryParameter)) }
 
     val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
+        ActivityResultContracts.StartActivityForResult()
     ) {
         val updated = CurrentGroupObject.getCurrentGroupEntry()
         group = GroupEntry(updated)
@@ -62,6 +69,7 @@ fun GroupCard(
     val accentColor = Color(0xFF007AFF)
     val destructiveColor = Color(0xFFFF3B30)
     val successColor = Color(0xFF34C759)
+    val warningColor = Color(0xFFFF9500)
 
     WatchStopTheme(darkTheme = darkmode) {
         Card(
@@ -82,7 +90,8 @@ fun GroupCard(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = group.title,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold),
                             color = primaryText
                         )
                         Text(
@@ -96,7 +105,6 @@ fun GroupCard(
                             fontWeight = FontWeight.SemiBold
                         )
                     }
-                    // SuperAdmins can only "Archive" not delete from card; Admins delete; Members quit
                     Text(
                         text = when {
                             isSuperAdmin -> "Archive"
@@ -114,38 +122,66 @@ fun GroupCard(
 
                 // ── Date / Time Tags ────────────────────────────────────────
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SketchTag(group.eventDateTime.format(DateTimeFormatter.ofPattern("dd MMM yyyy")))
-                    SketchTag(group.eventDateTime.format(DateTimeFormatter.ofPattern("HH:mm 'hrs'")))
+                    SketchTag(group.eventDateTime.format(
+                        DateTimeFormatter.ofPattern("dd MMM yyyy")))
+                    SketchTag(group.eventDateTime.format(
+                        DateTimeFormatter.ofPattern("HH:mm 'hrs'")))
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // ── Members with Location Indicators ───────────────────────
-                group.groupMemberNames.forEach { member ->
-                    val memberRole = group.memberRoles[member] ?: GroupRole.MEMBER
-                    val isSharing = group.locationSharingEnabled[member] ?: false
-                    val canToggle = group.canToggleSharing[member] ?: false
+                // ── Member List with Status Dashboard ──────────────────────
+                group.groupMemberNames.forEach { memberUid ->
+                    val memberRole = group.memberRoles[memberUid] ?: GroupRole.MEMBER
+                    val isSharing = group.locationSharingEnabled[memberUid] ?: false
+                    val status = group.tripStatus[memberUid] ?: TripStatus.INACTIVE
+
+                    // Resolve UID → display name async
+                    var displayName by remember(memberUid) { mutableStateOf(memberUid) }
+                    LaunchedEffect(memberUid) {
+                        displayName = FirebaseRepository.getUsername(memberUid)
+                    }
 
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 3.dp),
+                            .padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Location dot
+                        // Location sharing indicator
                         Icon(
-                            imageVector = if (isSharing) Icons.Default.LocationOn else Icons.Default.LocationOff,
+                            imageVector = if (isSharing) Icons.Default.LocationOn
+                            else Icons.Default.LocationOff,
                             contentDescription = null,
                             tint = if (isSharing) successColor else Color.Gray,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = member + if (member == currentUser) " (you)" else "",
-                            fontSize = 13.sp,
-                            color = primaryText,
-                            modifier = Modifier.weight(1f)
-                        )
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = displayName + if (memberUid == currentUid) " (you)" else "",
+                                fontSize = 13.sp,
+                                color = primaryText
+                            )
+                            // Trip status badge
+                            Text(
+                                text = when (status) {
+                                    TripStatus.EN_ROUTE -> "🟡 En Route"
+                                    TripStatus.ARRIVED -> "🟢 Arrived"
+                                    TripStatus.INACTIVE -> "⚪ Inactive"
+                                },
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = when (status) {
+                                    TripStatus.EN_ROUTE -> warningColor
+                                    TripStatus.ARRIVED -> successColor
+                                    TripStatus.INACTIVE -> secondaryText
+                                }
+                            )
+                        }
+
+                        // Role badge
                         Text(
                             text = memberRole.displayName,
                             fontSize = 11.sp,
@@ -156,15 +192,19 @@ fun GroupCard(
                             }
                         )
 
-                        // Admin can toggle sharing permission for members
-                        if (isAdmin && member != currentUser && memberRole == GroupRole.MEMBER) {
-                            val memberCanToggle = group.canToggleSharing[member] ?: false
+                        // Admin can lock/allow sharing for members
+                        if (isAdmin && memberUid != currentUid && memberRole == GroupRole.MEMBER) {
+                            val memberCanToggle = group.canToggleSharing[memberUid] ?: false
                             TextButton(
                                 onClick = {
-                                    val updated = GroupEntry(group)
-                                    updated.setCanToggleSharing(member, !memberCanToggle)
-                                    group = updated
-                                    onEdited(updated)
+                                    coroutineScope.launch {
+                                        FirebaseRepository.setCanToggleSharing(
+                                            groupId, memberUid, !memberCanToggle)
+                                        val updated = GroupEntry(group)
+                                        updated.setCanToggleSharing(memberUid, !memberCanToggle)
+                                        group = updated
+                                        onEdited(updated)
+                                    }
                                 },
                                 contentPadding = PaddingValues(horizontal = 4.dp)
                             ) {
@@ -176,16 +216,18 @@ fun GroupCard(
                             }
                         }
 
-                        // Vote to remove admin (any non-super-admin can vote against an admin)
-                        if (member != currentUser && memberRole == GroupRole.ADMIN) {
-                            val hasVoted = group.hasVotedToRemove(member, currentUser)
-                            val voteCount = group.voteCountToRemove(member)
-                            val needed = group.votesNeededToRemove(member)
+                        // Vote to remove admin button (shown for Admin targets only, not SuperAdmin)
+                        if (memberUid != currentUid && memberRole == GroupRole.ADMIN) {
+                            val hasVoted = group.hasVotedToRemove(memberUid, currentUid)
+                            val voteCount = group.voteCountToRemove(memberUid)
+                            val needed = group.votesNeededToRemove(memberUid)
                             IconButton(
                                 onClick = {
-                                    if (!hasVoted) {
+                                    coroutineScope.launch {
+                                        FirebaseRepository.voteToRemoveAdmin(
+                                            groupId, memberUid, currentUid)
                                         val updated = GroupEntry(group)
-                                        updated.voteToRemoveAdmin(member, currentUser)
+                                        updated.voteToRemoveAdmin(memberUid, currentUid)
                                         group = updated
                                         onEdited(updated)
                                     }
@@ -195,7 +237,7 @@ fun GroupCard(
                             ) {
                                 Icon(
                                     Icons.Default.HowToVote,
-                                    contentDescription = "Vote to remove admin ($voteCount/$needed)",
+                                    contentDescription = "Vote to remove ($voteCount/$needed)",
                                     tint = if (hasVoted) Color.Gray else destructiveColor,
                                     modifier = Modifier.size(16.dp)
                                 )
@@ -206,49 +248,89 @@ fun GroupCard(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // ── Action Buttons ──────────────────────────────────────────
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    val isSharing = group.locationSharingEnabled[currentUser] ?: false
-                    val canCurrentToggle = group.canToggleSharing[currentUser] ?: false
+                // ── Action Buttons Row ──────────────────────────────────────
+                val isSharing = group.locationSharingEnabled[currentUid] ?: false
+                val canCurrentToggle = group.canToggleSharing[currentUid] ?: false
+                val currentStatus = group.tripStatus[currentUid] ?: TripStatus.INACTIVE
 
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Share / Stop Sharing button
                     SketchButton(
                         text = if (isSharing) "Stop Sharing" else "Share Location",
                         onClick = {
                             if (canCurrentToggle) {
+                                coroutineScope.launch {
+                                    try {
+                                        FirebaseRepository.toggleLocationSharing(
+                                            groupId, currentUid, !isSharing)
+                                        val updated = GroupEntry(group)
+                                        updated.setSharing(currentUid, !isSharing)
+                                        group = updated
+                                        onEdited(updated)
+                                    } catch (e: Exception) { /* locked */ }
+                                }
+                            }
+                        }
+                    )
+
+                    // Trip status cycle: Inactive → En Route → Arrived → Inactive
+                    SketchButton(
+                        text = when (currentStatus) {
+                            TripStatus.INACTIVE -> "Start Trip"
+                            TripStatus.EN_ROUTE -> "Mark Arrived"
+                            TripStatus.ARRIVED -> "End Trip"
+                        },
+                        onClick = {
+                            val next = when (currentStatus) {
+                                TripStatus.INACTIVE -> TripStatus.EN_ROUTE
+                                TripStatus.EN_ROUTE -> TripStatus.ARRIVED
+                                TripStatus.ARRIVED -> TripStatus.INACTIVE
+                            }
+                            coroutineScope.launch {
+                                FirebaseRepository.setTripStatus(groupId, currentUid, next)
                                 val updated = GroupEntry(group)
-                                updated.toggleSharing(currentUser)
+                                updated.setTripStatus(currentUid, next)
                                 group = updated
                                 onEdited(updated)
                             }
                         }
                     )
+                }
 
-                    if (isAdmin) {
-                        SketchButton(
-                            text = "Manage Group",
-                            onClick = {
-                                CurrentGroupObject.loadCurrentGroupEntry(group)
-                                launcher.launch(Intent(context, EditGroupActivity::class.java))
-                            }
-                        )
-                    } else if (!group.adminApplications.contains(currentUser)) {
-                        SketchButton(
-                            text = "Apply for Admin",
-                            onClick = {
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Manage group (admins) or Apply for admin (members)
+                if (isAdmin) {
+                    SketchButton(
+                        text = "Manage Group",
+                        onClick = {
+                            CurrentGroupObject.loadCurrentGroupEntry(group)
+                            launcher.launch(Intent(context, EditGroupActivity::class.java))
+                        }
+                    )
+                } else if (!group.adminApplications.contains(currentUid)) {
+                    SketchButton(
+                        text = "Apply for Admin",
+                        onClick = {
+                            coroutineScope.launch {
+                                FirebaseRepository.applyForAdmin(groupId, currentUid)
                                 val updated = GroupEntry(group)
-                                updated.applyForAdmin(currentUser)
+                                updated.applyForAdmin(currentUid)
                                 group = updated
                                 onEdited(updated)
                             }
-                        )
-                    }
+                        }
+                    )
                 }
 
-                // ── Application Pending Banner ──────────────────────────────
-                if (group.adminApplications.contains(currentUser)) {
+                // ── My pending application banner ───────────────────────────
+                if (group.adminApplications.contains(currentUid)) {
                     Spacer(modifier = Modifier.height(10.dp))
-                    val voteCount = group.adminApplicationVoteCount(currentUser)
-                    val needed = group.votesNeededForApplication(currentUser)
+                    val voteCount = group.adminApplicationVoteCount(currentUid)
+                    val needed = group.votesNeededForApplication(currentUid)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -257,61 +339,51 @@ fun GroupCard(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Admin application pending",
-                            fontSize = 12.sp,
-                            color = accentColor,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "$voteCount / $needed votes",
-                            fontSize = 12.sp,
-                            color = accentColor
-                        )
+                        Text("Admin application pending", fontSize = 12.sp,
+                            color = accentColor, fontWeight = FontWeight.Bold)
+                        Text("$voteCount / $needed votes", fontSize = 12.sp, color = accentColor)
                     }
                 }
 
-                // ── Pending Applications visible to Admins ──────────────────
+                // ── Pending applications visible to admins ──────────────────
                 if (isAdmin) {
-                    val pendingApplicants = group.adminApplications.filter { it != currentUser }
-                    if (pendingApplicants.isNotEmpty()) {
+                    val pending = group.adminApplications.filter { it != currentUid }
+                    if (pending.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(10.dp))
                         HorizontalDivider(color = Color.Gray.copy(alpha = 0.3f))
                         Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Pending Admin Applications",
-                            fontSize = 12.sp,
-                            color = secondaryText,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        pendingApplicants.forEach { applicant ->
-                            val voteCount = group.adminApplicationVoteCount(applicant)
-                            val needed = group.votesNeededForApplication(applicant)
-                            val hasVoted = group.adminApplicationVotes[applicant]?.contains(currentUser) == true
+                        Text("Pending Admin Applications", fontSize = 12.sp,
+                            color = secondaryText, fontWeight = FontWeight.SemiBold)
+
+                        pending.forEach { applicantUid ->
+                            val voteCount = group.adminApplicationVoteCount(applicantUid)
+                            val needed = group.votesNeededForApplication(applicantUid)
+                            val hasVoted = group.adminApplicationVotes[applicantUid]
+                                ?.contains(currentUid) == true
+
+                            var applicantName by remember(applicantUid) {
+                                mutableStateOf(applicantUid) }
+                            LaunchedEffect(applicantUid) {
+                                applicantName = FirebaseRepository.getUsername(applicantUid)
+                            }
+
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = applicant,
-                                    fontSize = 13.sp,
-                                    color = primaryText,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    text = "$voteCount/$needed",
-                                    fontSize = 12.sp,
-                                    color = secondaryText
-                                )
+                                Text(applicantName, fontSize = 13.sp, color = primaryText,
+                                    modifier = Modifier.weight(1f))
+                                Text("$voteCount/$needed", fontSize = 12.sp, color = secondaryText)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                // SuperAdmin can approve instantly; regular admin adds a vote
                                 TextButton(
                                     onClick = {
-                                        if (!hasVoted) {
+                                        coroutineScope.launch {
+                                            FirebaseRepository.voteForAdminApplication(
+                                                groupId, applicantUid, currentUid)
                                             val updated = GroupEntry(group)
-                                            updated.voteForAdminApplication(applicant, currentUser)
+                                            updated.voteForAdminApplication(applicantUid, currentUid)
                                             group = updated
                                             onEdited(updated)
                                         }
@@ -320,7 +392,7 @@ fun GroupCard(
                                     contentPadding = PaddingValues(horizontal = 8.dp)
                                 ) {
                                     Text(
-                                        text = if (isSuperAdmin) "Approve" else if (hasVoted) "Voted" else "Approve",
+                                        text = if (hasVoted) "Voted" else "Approve",
                                         color = if (hasVoted) Color.Gray else successColor,
                                         fontSize = 12.sp
                                     )
@@ -334,7 +406,7 @@ fun GroupCard(
     }
 }
 
-// ── Shared small components ─────────────────────────────────────────────────
+// ── Shared small components ──────────────────────────────────────────────────
 
 @Composable
 fun SketchTag(text: String, color: Color = Color.Gray) {

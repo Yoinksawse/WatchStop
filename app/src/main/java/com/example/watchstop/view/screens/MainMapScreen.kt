@@ -73,16 +73,16 @@ fun MyGoogleMap() {
     var currentPin by remember { mutableStateOf<LatLng?>(null) }
     var radius by remember { mutableFloatStateOf(100f) }
 
-    // Sync with database on start
+    //sync db on startu[p
     LaunchedEffect(Unit) {
         geofences.addAll(UserGeofencesDatabase.getAllGeofences())
     }
 
-    // Naming state
+    //naming geofence
     var pendingGeofence by remember { mutableStateOf<GeofenceArea?>(null) }
     var geofenceNameInput by remember { mutableStateOf("") }
 
-    // Drawing states
+    //drawing geofence
     var currentDrawingPoints by remember { mutableStateOf<List<Offset>>(emptyList()) }
     var failingPolygon by remember { mutableStateOf<List<Offset>?>(null) }
     val failingAlpha = remember { Animatable(0f) }
@@ -212,7 +212,7 @@ fun MyGoogleMap() {
                         )
                     }
                     
-                    // Label for confirmed geofence
+                    //label for ok geofences
                     Marker(
                         state = MarkerState(position = zone.center),
                         title = zone.name,
@@ -221,7 +221,7 @@ fun MyGoogleMap() {
                     )
                 }
                 
-                // Show pending geofence preview while naming
+                //pending: while naming
                 pendingGeofence?.let { zone ->
                     if (zone.points.isEmpty()) {
                         Circle(
@@ -309,7 +309,7 @@ fun MyGoogleMap() {
                 }
             }
 
-            // Naming Popup Overlay
+            //naming popup box
             pendingGeofence?.let {
                 Box(
                     modifier = Modifier.fillMaxSize(),

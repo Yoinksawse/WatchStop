@@ -28,7 +28,7 @@
             android:value="AIzaSyC2lqhHw_QuHtOlQp18DTK4ZpmMhHlv5-U" />
 
         <service
-            android:name=".service.LocationMonitorService"
+            android:name=".service.GeofenceMonitorService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />

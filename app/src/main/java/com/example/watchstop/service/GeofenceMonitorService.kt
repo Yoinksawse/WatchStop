@@ -2,7 +2,6 @@ package com.example.watchstop.service
 
 import android.R
 import android.app.*
-import android.content.Context
 import android.content.Intent
 import android.location.Location
 import android.media.AudioAttributes
@@ -14,7 +13,6 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import com.example.watchstop.activities.MainActivity
-import com.example.watchstop.service.FirebaseRepository
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.model.GeoAlarm
 import com.example.watchstop.model.GeofenceArea
@@ -38,14 +36,12 @@ class GeofenceMonitorService : Service() {
     private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
     private val handler = Handler(Looper.getMainLooper())
-
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val NOTIFICATION_ID = 888
     private val CHANNEL_ID = "GeofenceMonitorChannel"
     private val ALARM_CHANNEL_ID = "GeofenceAlarmChannel"
 
-    // In-memory alarm list kept fresh by a Firebase listener
     private var liveAlarms: List<GeoAlarm> = emptyList()
     private val activeAlarms = mutableSetOf<String>()
 
@@ -61,13 +57,9 @@ class GeofenceMonitorService : Service() {
             @Suppress("DEPRECATION")
             getSystemService(VIBRATOR_SERVICE) as Vibrator
         }
-
         createNotificationChannels()
         startForeground(NOTIFICATION_ID, createPersistentNotification())
-
-        // Subscribe to real-time alarm updates from Firebase
         subscribeToAlarms()
-
         startLocationUpdates()
     }
 
@@ -84,16 +76,12 @@ class GeofenceMonitorService : Service() {
 
     // ── Firebase Alarm Subscription ───────────────────────────────────────
 
-    /**
-     * Collects the real-time Flow from FirebaseRepository.
-     * Every time the user's alarms change in Firebase, [liveAlarms] is updated
-     * automatically — no polling needed.
-     */
     private fun subscribeToAlarms() {
+        val uid = FirebaseRepository.currentUid ?: return
         serviceScope.launch {
-            FirebaseRepository.observeGeoAlarms(UserProfileObject.userName).collect { alarms ->
+            FirebaseRepository.observeGeoAlarms(uid).collect { alarms ->
                 liveAlarms = alarms
-                Log.d("GeofenceService", "Alarms updated from Firebase: ${alarms.size} alarms")
+                Log.d("GeofenceService", "Alarms updated: ${alarms.size}")
             }
         }
     }
@@ -117,10 +105,7 @@ class GeofenceMonitorService : Service() {
 
         try {
             fusedLocationClient.requestLocationUpdates(
-                locationRequest,
-                locationCallback,
-                Looper.getMainLooper()
-            )
+                locationRequest, locationCallback, Looper.getMainLooper())
         } catch (e: SecurityException) {
             Log.e("GeofenceService", "Location permission missing", e)
         }
@@ -134,10 +119,8 @@ class GeofenceMonitorService : Service() {
         val now = LocalDateTime.now()
         val currentTime = LocalTime.now()
 
-        // liveAlarms is updated by the Firebase Flow subscription above
         liveAlarms.forEach { alarm ->
             if (!alarm.active) return@forEach
-
             if (alarm.startTime != null && alarm.endTime != null) {
                 if (currentTime.isBefore(alarm.startTime) || currentTime.isAfter(alarm.endTime))
                     return@forEach
@@ -161,35 +144,42 @@ class GeofenceMonitorService : Service() {
     // ── Live Location Push to Groups ──────────────────────────────────────
 
     /**
-     * For every group where the current user has location sharing enabled,
-     * write the device's latest position to Firebase so other group members
-     * can see it in real-time.
+     * Reads the groups node directly, filtering to groups where:
+     * - current user (by UID) is a member
+     * - locationSharingEnabled[uid] == true
+     * Uses UID throughout — consistent with the rest of the app.
      */
-    @RequiresApi(Build.VERSION_CODES.O)
     private fun pushLiveLocationToGroups(location: Location) {
+        // Use Firebase Auth UID — consistent with how groups store memberIds
         val uid = FirebaseRepository.currentUid ?: return
+
         serviceScope.launch {
-            // observeMyGroups() is a Flow; we just want a one-shot snapshot here.
-            // We use a simple DB get() instead to avoid holding a persistent listener per tick.
             try {
-                val groupsRef = FirebaseDatabase.getInstance().reference.child("groups")
-                groupsRef.get().addOnSuccessListener { snapshot ->
-                    snapshot.children.forEach { groupSnap ->
-                        val groupId = groupSnap.key ?: return@forEach
-                        val memberIds = groupSnap.child("memberIds").children.mapNotNull { it.key }
-                        if (!memberIds.contains(uid)) return@forEach
-                        val isSharing = groupSnap.child("locationSharingEnabled")
-                            .child(uid).getValue(Boolean::class.java) ?: false
-                        if (isSharing) {
-                            FirebaseRepository.pushLocation(
-                                groupId, uid,
-                                location.latitude, location.longitude
-                            )
+                FirebaseDatabase.getInstance().reference
+                    .child("groups")
+                    .get()
+                    .addOnSuccessListener { snapshot ->
+                        snapshot.children.forEach { groupSnap ->
+                            val groupId = groupSnap.key ?: return@forEach
+                            val isMember = groupSnap.child("memberIds")
+                                .child(uid).exists()
+                            if (!isMember) return@forEach
+
+                            val isSharing = groupSnap.child("locationSharingEnabled")
+                                .child(uid).getValue(Boolean::class.java) ?: false
+                            if (isSharing) {
+                                FirebaseRepository.pushLocation(
+                                    groupId, uid,
+                                    location.latitude, location.longitude
+                                )
+                            }
                         }
                     }
-                }
+                    .addOnFailureListener { e ->
+                        Log.w("GeofenceService", "pushLiveLocation failed: ${e.message}")
+                    }
             } catch (e: Exception) {
-                Log.e("GeofenceService", "Failed to push location", e)
+                Log.e("GeofenceService", "pushLiveLocationToGroups error", e)
             }
         }
     }
@@ -216,7 +206,9 @@ class GeofenceMonitorService : Service() {
             val p1 = polygon[i]
             val p2 = polygon[(i + 1) % polygon.size]
             if (((p1.latitude > point.latitude) != (p2.latitude > point.latitude)) &&
-                (point.longitude < (p2.longitude - p1.longitude) * (point.latitude - p1.latitude) / (p2.latitude - p1.latitude) + p1.longitude)
+                (point.longitude < (p2.longitude - p1.longitude) *
+                        (point.latitude - p1.latitude) /
+                        (p2.latitude - p1.latitude) + p1.longitude)
             ) intersectCount++
         }
         return intersectCount % 2 != 0
@@ -268,7 +260,9 @@ class GeofenceMonitorService : Service() {
                 override fun run() {
                     if (currentVolume < 1.0) {
                         currentVolume += 0.1
-                        audioManager.setStreamVolume(AudioManager.STREAM_ALARM, (maxVolume * currentVolume).toInt(), 0)
+                        audioManager.setStreamVolume(
+                            AudioManager.STREAM_ALARM,
+                            (maxVolume * currentVolume).toInt(), 0)
                         handler.postDelayed(this, 3000)
                     }
                 }
@@ -299,8 +293,7 @@ class GeofenceMonitorService : Service() {
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val monitorChannel = NotificationChannel(
-                CHANNEL_ID, "Geofence Monitor", NotificationManager.IMPORTANCE_LOW
-            )
+                CHANNEL_ID, "Geofence Monitor", NotificationManager.IMPORTANCE_LOW)
             val alarmChannel = NotificationChannel(
                 ALARM_CHANNEL_ID, "Geofence Alarms", NotificationManager.IMPORTANCE_HIGH
             ).apply { setSound(null, null); enableVibration(true) }
@@ -312,7 +305,8 @@ class GeofenceMonitorService : Service() {
 
     private fun createPersistentNotification(): Notification {
         val intent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("WatchStop Monitor Active")
             .setContentText("Monitoring geofences in the background...")
