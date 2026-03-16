@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -25,6 +26,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.watchstop.R
 import com.example.watchstop.data.UserProfileObject
@@ -32,6 +34,7 @@ import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.view.ui.theme.CarbonGrey
 import com.example.watchstop.view.ui.theme.Purple40
 import com.example.watchstop.view.ui.theme.WatchStopTheme
+import com.google.firebase.auth.FirebaseAuth
 
 class ProfileActivity : ComponentActivity() {
     @SuppressLint("UnsafeIntentLaunch")
@@ -91,6 +94,31 @@ private fun ProfileScreen() {
     val email = UserProfileObject.email
     val context = LocalContext.current
     var isPressed by remember { mutableStateOf(false) }
+
+    // State for the Change Password Dialog
+    var showPasswordDialog by remember { mutableStateOf(false) }
+
+    if (showPasswordDialog) {
+        ChangePasswordDialog(
+            onDismiss = { showPasswordDialog = false },
+            onConfirm = { newPassword ->
+                val user = FirebaseAuth.getInstance().currentUser
+                user?.updatePassword(newPassword)
+                    ?.addOnCompleteListener { task ->
+                        if (task.isSuccessful) {
+                            // Important: Update SharedPreferences so auto-login doesn't fail later
+                            val userPrefs = context.getSharedPreferences("WatchStopUserPrefs", Activity.MODE_PRIVATE)
+                            userPrefs.edit().putString("savedPassword", newPassword).apply()
+
+                            Toast.makeText(context, "Password updated successfully!", Toast.LENGTH_SHORT).show()
+                            showPasswordDialog = false
+                        } else {
+                            Toast.makeText(context, "Error: ${task.exception?.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -164,6 +192,18 @@ private fun ProfileScreen() {
             )
         }
 
+        // --- NEW: Change Password Button ---
+        OutlinedButton(
+            onClick = { showPasswordDialog = true },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp, vertical = 8.dp),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Text("Change Password")
+        }
+        // -----------------------------------
+
         Spacer(modifier = Modifier.weight(1f))
 
         if (UserProfileObject.isLoggedIn) {
@@ -197,4 +237,55 @@ private fun ProfileScreen() {
         }
         Spacer(modifier = Modifier.height(32.dp))
     }
+}
+
+@Composable
+fun ChangePasswordDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var newPassword by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Update Password") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = newPassword,
+                    onValueChange = { newPassword = it },
+                    label = { Text("New Password") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = confirmPassword,
+                    onValueChange = { confirmPassword = it },
+                    label = { Text("Confirm New Password") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (newPassword.isNotEmpty() && confirmPassword.isNotEmpty() && newPassword != confirmPassword) {
+                    Text(
+                        text = "Passwords do not match",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = newPassword.isNotEmpty() && newPassword == confirmPassword && newPassword.length >= 6,
+                onClick = { onConfirm(newPassword) }
+            ) {
+                Text("Confirm")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }

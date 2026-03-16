@@ -6,8 +6,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -46,6 +46,7 @@ class LoginActivity : ComponentActivity() {
 
         setContent {
             val focusManager = LocalFocusManager.current
+            val keyboardController = LocalSoftwareKeyboardController.current
             val activity = this
 
             WatchStopTheme (darkTheme = UserProfileObject.darkmode) {
@@ -70,16 +71,17 @@ class LoginActivity : ComponentActivity() {
                             )
                         )
                     }
-                ){innerPadding ->
+                ){ innerPadding ->
+                    // ── OUTER WRAPPER TO CAPTURE TAPS ──────────────────────────
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(innerPadding)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                focusManager.clearFocus()
+                            .pointerInput(Unit) {
+                                detectTapGestures(onTap = {
+                                    focusManager.clearFocus()
+                                    keyboardController?.hide()
+                                })
                             }
                     ){
                         LoginScreen(activity)
@@ -102,19 +104,11 @@ fun LoginScreen(activity: Activity) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
-    val keyboardController = LocalSoftwareKeyboardController.current
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) {
-                focusManager.clearFocus()
-                keyboardController?.hide()
-            }
             .padding(horizontal = 24.dp)
             .padding(top = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -201,8 +195,6 @@ fun LoginScreen(activity: Activity) {
             )
         }
 
-        val scope = rememberCoroutineScope()
-
         Button(
             onClick = {
                 if (email.isBlank() || password.isBlank() || (!isLoginMode && username.isBlank()))
@@ -226,7 +218,6 @@ fun LoginScreen(activity: Activity) {
                                 .apply()
 
                             activity.finish()
-                            return@launch
                         } catch (e: Exception) {
                             errorMessage = e.localizedMessage ?: e.toString()
                             //TODO: friendly error messages
@@ -255,5 +246,8 @@ fun LoginScreen(activity: Activity) {
                 color = MaterialTheme.colorScheme.primary
             )
         }
+
+        // Filler spacer ensures the bottom of the screen is clickable even on short devices
+        Spacer(modifier = Modifier.height(32.dp))
     }
 }
