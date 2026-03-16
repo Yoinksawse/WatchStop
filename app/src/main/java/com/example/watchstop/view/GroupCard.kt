@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.example.watchstop.activities.EditGroupActivity
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.data.UserProfileObject.darkmode
-import com.example.watchstop.model.CurrentGroupObject
+import com.example.watchstop.data.CurrentGroupObject
 import com.example.watchstop.model.GroupEntry
 import com.example.watchstop.model.GroupRole
 import com.example.watchstop.model.TripStatus
@@ -58,9 +58,13 @@ fun GroupCard(
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
-        val updated = CurrentGroupObject.getCurrentGroupEntry()
-        group = GroupEntry(updated)
-        onEdited(group)
+        // Only update if EditGroupActivity actually saved something
+        if (CurrentGroupObject.activated) {
+            val updated = CurrentGroupObject.getCurrentGroupEntry()
+            group = GroupEntry(updated)
+            onEdited(group)
+        }
+        // If it crashed/returned without saving, group stays as-is
     }
 
     val backgroundColor = if (darkmode) Color(0xFF1C1C1E) else Color.White
@@ -108,8 +112,8 @@ fun GroupCard(
                     Text(
                         text = when {
                             isSuperAdmin -> "Disband"
-                            isAdmin -> "Disband"
-                            else -> "Quit"
+                            isAdmin -> "Leave"
+                            else -> "Leave"
                         },
                         color = destructiveColor,
                         fontSize = 13.sp,
@@ -218,7 +222,7 @@ fun GroupCard(
                                 contentPadding = PaddingValues(horizontal = 4.dp)
                             ) {
                                 Text(
-                                    if (memberCanToggle) "Lock" else "Allow",
+                                    if (memberCanToggle) "Revoke Sharing" else "Allow Sharing",
                                     fontSize = 11.sp,
                                     color = if (memberCanToggle) destructiveColor else accentColor
                                 )
@@ -268,7 +272,11 @@ fun GroupCard(
                 ) {
                     // Share / Stop Sharing button
                     SketchButton(
-                        text = if (isSharing) "Stop Sharing" else "Share Location",
+                        text = when {
+                            !canCurrentToggle -> "Sharing Locked"
+                            isSharing -> "Stop Sharing"
+                            else -> "Share Location"
+                        },
                         onClick = {
                             if (canCurrentToggle) {
                                 coroutineScope.launch {
@@ -316,7 +324,7 @@ fun GroupCard(
                     SketchButton(
                         text = "Manage Group",
                         onClick = {
-                            CurrentGroupObject.loadCurrentGroupEntry(group)
+                            CurrentGroupObject.loadCurrentGroupEntry(group, groupId)
                             launcher.launch(Intent(context, EditGroupActivity::class.java))
                         }
                     )

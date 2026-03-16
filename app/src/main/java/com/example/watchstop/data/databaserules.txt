@@ -1,6 +1,7 @@
 {
   "rules": {
     "users": {
+      ".indexOn": ["email", "userName"],
       "$uid": {
         ".read": "$uid === auth.uid",
         ".write": "$uid === auth.uid",
@@ -43,11 +44,7 @@
     "groups": {
       "$groupId": {
         ".read": "auth != null && data.child('memberIds').child(auth.uid).exists()",
-        ".write": "auth != null && (
-          data.child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' ||
-          data.child('memberRoles').child(auth.uid).val() === 'ADMIN' ||
-          !data.exists()
-        )"
+        ".write": "auth != null && (data.child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || data.child('memberRoles').child(auth.uid).val() === 'ADMIN' || !data.exists())"
       }
     },
     "groupLocations": {

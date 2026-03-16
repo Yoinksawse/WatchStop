@@ -345,6 +345,54 @@ object FirebaseRepository {
         awaitClose { ref.removeEventListener(listener) }
     }
 
+    /** Search for a user by username or email. Returns their UID or null if not found. */
+    suspend fun findUserByUsernameOrEmail(query: String): Pair<String, String>? {
+        return try {
+            val trimmed = query.trim()
+            val byUsername = db.child("usernames").child(trimmed.lowercase()).get().await()
+            if (byUsername.exists()) {
+                val uidsSnap = db.child("uids").get().await()
+                val uid = uidsSnap.children.firstOrNull { snap ->
+                    snap.getValue(String::class.java).equals(trimmed, ignoreCase = true)
+                }?.key ?: return null
+                return uid to trimmed
+            }
+            val usernamesSnap = db.child("usernames").get().await()
+            val matchEntry = usernamesSnap.children.firstOrNull { snap ->
+                snap.getValue(String::class.java).equals(trimmed, ignoreCase = true)
+            } ?: return null
+            val userName = matchEntry.key ?: return null
+            val uidsSnap = db.child("uids").get().await()
+            val uid = uidsSnap.children.firstOrNull { snap ->
+                snap.getValue(String::class.java).equals(userName, ignoreCase = true)
+            }?.key ?: return null
+            uid to (uidsSnap.child(uid).getValue(String::class.java) ?: userName)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+
+    /** Add a member to a group atomically. */
+    suspend fun addMemberToGroup(groupId: String, targetUid: String) {
+        ensureAuth()
+        Log.d("addMember", "adding $targetUid to group $groupId, caller=${currentUid}")
+        val updates = mapOf(
+            "groups/$groupId/memberIds/$targetUid" to true,
+            "groups/$groupId/memberRoles/$targetUid" to GroupRole.MEMBER.name,
+            "groups/$groupId/locationSharingEnabled/$targetUid" to false,
+            "groups/$groupId/canToggleSharing/$targetUid" to false,
+            "groups/$groupId/tripStatus/$targetUid" to TripStatus.INACTIVE.name,
+            "users/$targetUid/groups/$groupId" to true
+        )
+        try {
+            db.updateChildren(updates).await()
+            Log.d("addMember", "SUCCESS")
+        } catch (e: Exception) {
+            Log.e("addMember", "FAILED: ${e.message}", e)
+        }
+    }
+
     // ── Live Location ─────────────────────────────────────────────────────
 
     fun pushLocation(groupId: String, uid: String, lat: Double, lng: Double) {
