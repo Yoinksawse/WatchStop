@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -34,6 +35,7 @@ import com.example.watchstop.model.GroupRole
 import com.example.watchstop.view.ui.theme.CarbonGrey
 import com.example.watchstop.view.ui.theme.Purple40
 import com.example.watchstop.view.ui.theme.WatchStopTheme
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 class EditGroupActivity : AppCompatActivity() {
@@ -59,6 +61,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
     val snapshot = remember { CurrentGroupObject.getCurrentGroupEntry() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val coroutineScope = rememberCoroutineScope()
 
     var title by remember { mutableStateOf(snapshot.title) }
     var description by remember { mutableStateOf(snapshot.description) }
@@ -69,10 +72,24 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
         initialHour = snapshot.eventDateTime.hour,
         initialMinute = snapshot.eventDateTime.minute
     )
-    var showTimePicker by remember { mutableStateOf(false) }
+    var showInfoDialog by remember { mutableStateOf(false) }
 
-    // Working copies of all mutable group state
+    // Working copies — seeded from the snapshot, but memberIds/pendingInvitations
+    // are kept separate so Save never accidentally overwrites live Firebase state.
     val memberNames = remember { mutableStateListOf(*snapshot.groupMemberNames.toTypedArray()) }
+    val groupId = CurrentGroupObject.getCurrentGroupId()
+
+    // pendingInvitations is driven entirely by the live Firebase observer so it
+    // always reflects real-time Firebase state — not a stale local snapshot.
+    val pendingInvitations = remember { mutableStateListOf<String>() }
+
+    LaunchedEffect(groupId) {
+        FirebaseRepository.observePendingInvitationsSentByMe(groupId).collect { invites ->
+            pendingInvitations.clear()
+            pendingInvitations.addAll(invites)
+        }
+    }
+
     val memberRoles = remember { mutableStateMapOf<String, GroupRole>().apply { putAll(snapshot.memberRoles) } }
     val sharingEnabled = remember { mutableStateMapOf<String, Boolean>().apply { putAll(snapshot.locationSharingEnabled) } }
     val canToggle = remember { mutableStateMapOf<String, Boolean>().apply { putAll(snapshot.canToggleSharing) } }
@@ -96,6 +113,9 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
     val accentColor = Color(0xFF007AFF)
     val destructiveColor = Color(0xFFFF3B30)
     val successColor = Color(0xFF34C759)
+    val secondaryText = if (darkmode) Color(0xFF8E8E93) else Color(0xFF636366)
+
+    var showRemovalDialogFor by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         topBar = {
@@ -114,7 +134,6 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
             )
         }
     ) { innerPadding ->
-        // ── OUTER WRAPPER TO CAPTURE TAPS ──────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -133,88 +152,25 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-                // ── Group Details ──────────────────────────────────────────────
-                Text(
-                    "Group Details",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Group Title") },
+                // ── Edit Group Info Button ─────────────────────────────────────
+                Button(
+                    onClick = { showInfoDialog = true },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.medium
-                )
-
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = { Text("Description") },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp),
-                    minLines = 2
-                )
-
-                // ── Date / Time ────────────────────────────────────────────────
-                Text(
-                    "Target Date & Time",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = accentColor)
                 ) {
-                    OutlinedTextField(
-                        value = day,
-                        onValueChange = { if (it.length <= 2) day = it },
-                        label = { Text("D") },
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = month,
-                        onValueChange = { if (it.length <= 2) month = it },
-                        label = { Text("M") },
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = year,
-                        onValueChange = { if (it.length <= 4) year = it },
-                        label = { Text("Y") },
-                        modifier = Modifier.weight(1.5f)
-                    )
-                    IconButton(
-                        onClick = { showTimePicker = true },
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Icon(Icons.Default.Schedule, contentDescription = "Set time")
-                    }
-                }
-                if (showTimePicker) {
-                    TimePickerDialog(
-                        onDismissRequest = { showTimePicker = false },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                showTimePicker = false
-                            }) { Text("OK") }
-                        },
-                        title = { Text("Set Time") }
-                    ) { TimePicker(state = timePickerState) }
+                    Icon(Icons.Default.Edit, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Edit Group Info")
                 }
 
                 HorizontalDivider()
 
-                // ── Add Member ─────────────────────────────────────────────────────────
+                // ── Add Member (Invite) ────────────────────────────────────────
                 if (currentIsAdmin) {
-                    Text(
-                        "Add Member", style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-
+                    Text("Invite Member", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     var searchQuery by remember { mutableStateOf("") }
                     var searchResult by remember { mutableStateOf<Pair<String, String>?>(null) }
                     var searchError by remember { mutableStateOf("") }
@@ -228,11 +184,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                     ) {
                         OutlinedTextField(
                             value = searchQuery,
-                            onValueChange = {
-                                searchQuery = it
-                                searchResult = null
-                                searchError = ""
-                            },
+                            onValueChange = { searchQuery = it; searchResult = null; searchError = "" },
                             label = { Text("Username or Email") },
                             modifier = Modifier.weight(1f),
                             singleLine = true
@@ -240,25 +192,25 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                         Button(
                             onClick = {
                                 searchScope.launch {
-                                    isSearching = true
-                                    searchError = ""
-                                    searchResult = null
-                                    val result =
-                                        FirebaseRepository.findUserByUsernameOrEmail(searchQuery.trim())
-                                    if (result == null) {
-                                        searchError = "User not found"
-                                    } else if (memberNames.contains(result.first)) {
-                                        searchError = "Already in group"
-                                    } else {
-                                        searchResult = result
+                                    isSearching = true; searchError = ""; searchResult = null
+                                    val result = FirebaseRepository.findUserByUsernameOrEmail(searchQuery.trim())
+                                    when {
+                                        result == null ->
+                                            searchError = "User not found"
+                                        // FIX (Mistake 1): block invite if already a member
+                                        memberNames.contains(result.first) ->
+                                            searchError = "Already a member of this group"
+                                        // FIX (Mistake 1): block invite if already pending
+                                        pendingInvitations.contains(result.first) ->
+                                            searchError = "Invite already pending"
+                                        else ->
+                                            searchResult = result
                                     }
                                     isSearching = false
                                 }
                             },
                             enabled = searchQuery.isNotBlank() && !isSearching
-                        ) {
-                            Text(if (isSearching) "..." else "Search")
-                        }
+                        ) { Text(if (isSearching) "..." else "Search") }
                     }
 
                     if (searchError.isNotEmpty()) {
@@ -268,72 +220,49 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                     searchResult?.let { (foundUid, foundName) ->
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = successColor.copy(alpha = 0.08f)
-                            ),
+                            colors = CardDefaults.cardColors(containerColor = successColor.copy(alpha = 0.08f)),
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        foundName,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 14.sp
-                                    )
-                                    Text(
-                                        "Will be added as Member", fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Text(foundName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                    Text("Invite to group", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Button(
                                     onClick = {
                                         searchScope.launch {
                                             try {
-                                                val gId = CurrentGroupObject.getCurrentGroupId()
-                                                FirebaseRepository.addMemberToGroup(gId, foundUid)
-                                                memberNames.add(foundUid)
-                                                memberRoles[foundUid] = GroupRole.MEMBER
-                                                sharingEnabled[foundUid] = false
-                                                canToggle[foundUid] = false
+                                                // inviteToGroup writes directly to Firebase —
+                                                // the live observer will pick up the new entry
+                                                // automatically; no local mutation needed here.
+                                                FirebaseRepository.inviteToGroup(groupId, foundUid)
                                                 searchResult = null
                                                 searchQuery = ""
                                             } catch (e: Exception) {
-                                                searchError = "Failed to add member: ${e.message}"
+                                                searchError = "Failed to invite: ${e.message}"
                                             }
                                         }
                                     },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = successColor
-                                    )
-                                ) {
-                                    Text("Add")
-                                }
+                                    colors = ButtonDefaults.buttonColors(containerColor = successColor)
+                                ) { Text("Invite") }
                             }
                         }
                     }
-
                     HorizontalDivider()
                 }
 
                 // ── Members Section ────────────────────────────────────────────
-                Text(
-                    "Members",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-
+                Text("Members", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 memberNames.forEach { member ->
                     val role = memberRoles[member] ?: GroupRole.MEMBER
                     val isSharing = sharingEnabled[member] ?: false
                     val memberCanToggle = canToggle[member] ?: false
                     val isSelf = member == currentUser
-                    val isTargetSuperAdmin = role == GroupRole.SUPER_ADMIN
                     val isTargetAdmin = role == GroupRole.ADMIN
+                    val isTargetSuperAdmin = role == GroupRole.SUPER_ADMIN
                     val removalVoteSet = removalVotes[member] ?: emptySet()
                     val eligibleForRemoval = memberNames.filter { it != member }
                     val removalNeeded = (eligibleForRemoval.size / 2) + 1
@@ -341,16 +270,11 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
 
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                        ),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
                                     imageVector = if (isSharing) Icons.Default.LocationOn else Icons.Default.LocationOff,
                                     contentDescription = null,
@@ -359,8 +283,10 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Column(modifier = Modifier.weight(1f)) {
+                                    var displayName by remember(member) { mutableStateOf(member) }
+                                    LaunchedEffect(member) { displayName = FirebaseRepository.getUsername(member) }
                                     Text(
-                                        text = member + if (isSelf) " (you)" else "",
+                                        text = displayName + if (isSelf) " (you)" else "",
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 14.sp
                                     )
@@ -375,70 +301,35 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                     )
                                 }
                             }
-
                             Spacer(modifier = Modifier.height(8.dp))
-
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                                 if (isSelf && memberCanToggle) {
                                     OutlinedButton(
                                         onClick = { sharingEnabled[member] = !isSharing },
                                         modifier = Modifier.height(32.dp),
-                                        contentPadding = PaddingValues(horizontal = 10.dp),
                                         shape = RoundedCornerShape(8.dp)
                                     ) {
-                                        Text(
-                                            if (isSharing) "Stop Sharing" else "Share Location",
-                                            fontSize = 11.sp
-                                        )
+                                        Text(if (isSharing) "Stop Sharing" else "Share Location", fontSize = 11.sp)
                                     }
                                 }
-
                                 if (!isSelf && currentIsAdmin) {
-                                    if (role == GroupRole.MEMBER) {
-                                        OutlinedButton(
-                                            onClick = { canToggle[member] = !memberCanToggle },
-                                            modifier = Modifier.height(32.dp),
-                                            contentPadding = PaddingValues(horizontal = 10.dp),
-                                            shape = RoundedCornerShape(8.dp)
-                                        ) {
-                                            Text(
-                                                if (memberCanToggle) "Lock Sharing" else "Allow Sharing",
-                                                fontSize = 11.sp
-                                            )
-                                        }
-
-                                        OutlinedButton(
-                                            onClick = { sharingEnabled[member] = !isSharing },
-                                            modifier = Modifier.height(32.dp),
-                                            contentPadding = PaddingValues(horizontal = 10.dp),
-                                            shape = RoundedCornerShape(8.dp)
-                                        ) {
-                                            Text(
-                                                if (isSharing) "Force Off" else "Force On",
-                                                fontSize = 11.sp,
-                                                color = if (isSharing) destructiveColor else successColor
-                                            )
-                                        }
-                                    }
-
-                                    if (role == GroupRole.MEMBER) {
+                                    if (role == GroupRole.MEMBER && currentIsSuperAdmin) {
                                         OutlinedButton(
                                             onClick = {
+                                                // Update local state immediately for UI
                                                 memberRoles[member] = GroupRole.ADMIN
                                                 canToggle[member] = true
-                                                adminApplications.remove(member)
+                                                // Write to Firebase directly — don't wait for Save
+                                                coroutineScope.launch {
+                                                    FirebaseRepository.promoteToAdmin(groupId, member)
+                                                }
                                             },
                                             modifier = Modifier.height(32.dp),
-                                            contentPadding = PaddingValues(horizontal = 10.dp),
                                             shape = RoundedCornerShape(8.dp)
                                         ) {
                                             Text("Promote", fontSize = 11.sp, color = accentColor)
                                         }
                                     }
-
                                     if (!isTargetSuperAdmin) {
                                         OutlinedButton(
                                             onClick = {
@@ -448,38 +339,23 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                                 canToggle.remove(member)
                                             },
                                             modifier = Modifier.height(32.dp),
-                                            contentPadding = PaddingValues(horizontal = 10.dp),
                                             shape = RoundedCornerShape(8.dp),
-                                            border = androidx.compose.foundation.BorderStroke(
-                                                1.dp,
-                                                destructiveColor.copy(alpha = 0.5f)
-                                            )
+                                            border = BorderStroke(1.dp, destructiveColor.copy(alpha = 0.5f))
                                         ) {
                                             Text("Remove", fontSize = 11.sp, color = destructiveColor)
                                         }
                                     }
                                 }
-
                                 if (!isSelf && isTargetAdmin && !isTargetSuperAdmin) {
                                     OutlinedButton(
-                                        onClick = {
-                                            if (!hasVotedRemoval) {
-                                                val updated = removalVotes.getOrPut(member) { mutableSetOf() }
-                                                updated.add(currentUser)
-                                                if (updated.size >= removalNeeded) {
-                                                    memberRoles[member] = GroupRole.MEMBER
-                                                    canToggle[member] = false
-                                                    removalVotes.remove(member)
-                                                }
-                                            }
-                                        },
+                                        onClick = { showRemovalDialogFor = member },
                                         enabled = !hasVotedRemoval,
                                         modifier = Modifier.height(32.dp),
-                                        contentPadding = PaddingValues(horizontal = 10.dp),
                                         shape = RoundedCornerShape(8.dp),
-                                        border = androidx.compose.foundation.BorderStroke(
+                                        border = BorderStroke(
                                             1.dp,
-                                            if (hasVotedRemoval) Color.Gray.copy(alpha = 0.4f) else destructiveColor.copy(alpha = 0.5f)
+                                            if (hasVotedRemoval) Color.Gray.copy(alpha = 0.4f)
+                                            else destructiveColor.copy(alpha = 0.5f)
                                         )
                                     ) {
                                         Text(
@@ -497,42 +373,30 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                 // ── Pending Admin Applications ─────────────────────────────────
                 if (currentIsAdmin && adminApplications.isNotEmpty()) {
                     HorizontalDivider()
-                    Text(
-                        "Pending Admin Applications",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("Pending Admin Applications", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     adminApplications.toList().forEach { applicant ->
                         val votes = appVotes.getOrPut(applicant) { mutableSetOf() }
                         val needed = ((memberNames.size - 1) / 2) + 1
                         val hasVoted = votes.contains(currentUser)
-
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = accentColor.copy(alpha = 0.08f)
-                            ),
+                            colors = CardDefaults.cardColors(containerColor = accentColor.copy(alpha = 0.08f)),
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(applicant, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                    Text(
-                                        "${votes.size}/$needed approvals needed${if (currentIsSuperAdmin) " (you can approve instantly)" else ""}",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    var appName by remember(applicant) { mutableStateOf(applicant) }
+                                    LaunchedEffect(applicant) { appName = FirebaseRepository.getUsername(applicant) }
+                                    Text(appName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                    Text("${votes.size}/$needed approvals needed", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 TextButton(
                                     onClick = {
                                         votes.add(currentUser)
-                                        val approved = currentIsSuperAdmin || votes.size >= needed
-                                        if (approved) {
+                                        if (currentIsSuperAdmin || votes.size >= needed) {
                                             memberRoles[applicant] = GroupRole.ADMIN
                                             canToggle[applicant] = true
                                             adminApplications.remove(applicant)
@@ -546,12 +410,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                         color = if (hasVoted) Color.Gray else successColor
                                     )
                                 }
-                                TextButton(
-                                    onClick = {
-                                        adminApplications.remove(applicant)
-                                        appVotes.remove(applicant)
-                                    }
-                                ) {
+                                TextButton(onClick = { adminApplications.remove(applicant); appVotes.remove(applicant) }) {
                                     Text("Deny", color = destructiveColor)
                                 }
                             }
@@ -559,36 +418,98 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                     }
                 }
 
-                // ── Save Button ────────────────────────────────────────────────
+                // ── Pending Invitations Section ────────────────────────────────
+                // Driven by the live Firebase observer — always accurate.
+                if (pendingInvitations.isNotEmpty()) {
+                    HorizontalDivider()
+                    Text("Pending Invitations", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    val cancelScope = rememberCoroutineScope()
+                    pendingInvitations.toList().forEach { invitedUid ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                var invitedName by remember(invitedUid) { mutableStateOf(invitedUid) }
+                                LaunchedEffect(invitedUid) { invitedName = FirebaseRepository.getUsername(invitedUid) }
+                                Text(invitedName, modifier = Modifier.weight(1f), fontSize = 14.sp)
+                                if (currentIsAdmin) {
+                                    IconButton(
+                                        onClick = {
+                                            cancelScope.launch {
+                                                // FIX (Bug 2): cancelInvitation writes null to both
+                                                // groups/.../pendingInvitations/$uid AND
+                                                // users/$uid/invitations/$groupId atomically,
+                                                // so the notification disappears on the invitee's screen.
+                                                FirebaseRepository.cancelInvitation(groupId, invitedUid)
+                                                // The live observer will remove it from pendingInvitations
+                                                // automatically, but remove locally too for instant UI.
+                                                pendingInvitations.remove(invitedUid)
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Cancel invitation",
+                                            tint = destructiveColor,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(24.dp))
+                val saveScope = rememberCoroutineScope()
+
+                // FIX (Bugs 1 & 3): Save calls updateGroupMetadata instead of saveGroup.
+                // updateGroupMetadata never touches memberIds or pendingInvitations, so:
+                //   - members who joined after the admin opened this screen are never evicted
+                //   - pending invitations are never duplicated or ghost-written
                 Button(
                     onClick = {
                         if (title.isBlank()) return@Button
-                        val newDateTime = try {
-                            snapshot.eventDateTime
-                                .withYear(year.toIntOrNull() ?: snapshot.eventDateTime.year)
-                                .withMonth(month.toIntOrNull() ?: snapshot.eventDateTime.monthValue)
-                                .withDayOfMonth(day.toIntOrNull() ?: snapshot.eventDateTime.dayOfMonth)
-                                .withHour(timePickerState.hour)
-                                .withMinute(timePickerState.minute)
-                        } catch (e: Exception) {
-                            snapshot.eventDateTime
-                        }
+                        saveScope.launch {
+                            val latest = FirebaseRepository.getGroup(groupId) ?: return@launch
 
-                        val updated = GroupEntry(
-                            title = title.trim(),
-                            eventDateTime = newDateTime,
-                            description = description,
-                            groupMemberNames = memberNames.toMutableList(),
-                            memberRoles = memberRoles.toMutableMap(),
-                            locationSharingEnabled = sharingEnabled.toMutableMap(),
-                            canToggleSharing = canToggle.toMutableMap(),
-                            adminApplications = adminApplications.toMutableSet(),
-                            adminApplicationVotes = appVotes.mapValues { it.value.toMutableSet() }.toMutableMap(),
-                            votesToRemoveAdmin = removalVotes.mapValues { it.value.toMutableSet() }.toMutableMap()
-                        )
-                        CurrentGroupObject.loadCurrentGroupEntry(updated)
-                        onFinish()
+                            val newDateTime = try {
+                                latest.eventDateTime
+                                    .withYear(year.toIntOrNull() ?: latest.eventDateTime.year)
+                                    .withMonth(month.toIntOrNull() ?: latest.eventDateTime.monthValue)
+                                    .withDayOfMonth(day.toIntOrNull() ?: latest.eventDateTime.dayOfMonth)
+                                    .withHour(timePickerState.hour)
+                                    .withMinute(timePickerState.minute)
+                            } catch (e: Exception) {
+                                latest.eventDateTime
+                            }
+
+                            // Build the updated entry using the live snapshot as base so we
+                            // never carry stale memberIds/pendingInvitations into the write.
+                            val updated = latest.copy(
+                                title = title.trim(),
+                                description = description,
+                                eventDateTime = newDateTime,
+                                // Only carry the fields we actually edited locally:
+                                groupMemberNames = memberNames.toMutableList(),
+                                memberRoles = memberRoles.toMutableMap(),
+                                canToggleSharing = canToggle.toMutableMap(),
+                                adminApplications = adminApplications.toMutableSet(),
+                                adminApplicationVotes = appVotes.mapValues { it.value.toMutableSet() }.toMutableMap(),
+                                votesToRemoveAdmin = removalVotes.mapValues { it.value.toMutableSet() }.toMutableMap()
+                                // pendingInvitations intentionally omitted — managed via
+                                // inviteToGroup / cancelInvitation only.
+                            )
+
+                            FirebaseRepository.updateGroupMetadata(groupId, updated)
+                            CurrentGroupObject.loadCurrentGroupEntry(updated)
+                            onFinish()
+                        }
                     },
                     modifier = Modifier
                         .align(Alignment.End)
@@ -598,6 +519,91 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                     Text("Save Changes")
                 }
             }
+        }
+
+        // ── Group Info Dialog ──────────────────────────────────────────
+        if (showInfoDialog) {
+            AlertDialog(
+                onDismissRequest = { showInfoDialog = false },
+                title = { Text("Edit Group Info") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedTextField(
+                            value = title,
+                            onValueChange = { title = it },
+                            label = { Text("Group Title") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = description,
+                            onValueChange = { description = it },
+                            label = { Text("Description") },
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp),
+                            minLines = 2
+                        )
+                        Text("Target Date & Time", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(value = day, onValueChange = { if (it.length <= 2) day = it }, label = { Text("D") }, modifier = Modifier.weight(1f))
+                            OutlinedTextField(value = month, onValueChange = { if (it.length <= 2) month = it }, label = { Text("M") }, modifier = Modifier.weight(1f))
+                            OutlinedTextField(value = year, onValueChange = { if (it.length <= 4) year = it }, label = { Text("Y") }, modifier = Modifier.weight(1.5f))
+                        }
+                        var showTimePickerInternal by remember { mutableStateOf(false) }
+                        OutlinedButton(onClick = { showTimePickerInternal = true }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Default.Schedule, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(String.format("%02d:%02d hrs", timePickerState.hour, timePickerState.minute))
+                        }
+                        if (showTimePickerInternal) {
+                            TimePickerDialog(
+                                onDismissRequest = { showTimePickerInternal = false },
+                                confirmButton = { TextButton(onClick = { showTimePickerInternal = false }) { Text("OK") } },
+                                title = { Text("Pick Date & Time") }
+                            ) { TimePicker(state = timePickerState) }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showInfoDialog = false }) { Text("Done") } }
+            )
+        }
+
+        // ── Admin Removal Dialog ───────────────────────────────────────
+        showRemovalDialogFor?.let { targetUid ->
+            var myName by remember { mutableStateOf("") }
+            val eligible = memberNames.filter { it != targetUid }
+            val needed = (eligible.size / 2) + 1
+
+            AlertDialog(
+                onDismissRequest = { showRemovalDialogFor = null },
+                title = { Text("Initiate Admin Removal") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("You are starting a vote to remove privileges from an Administrator.")
+                        Text("Requirement: Please enter your name to confirm initiation.")
+                        OutlinedTextField(
+                            value = myName,
+                            onValueChange = { myName = it },
+                            label = { Text("Your Name") },
+                            singleLine = true
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val votes = removalVotes.getOrPut(targetUid) { mutableSetOf() }
+                            votes.add(currentUser)
+                            if (votes.size >= needed) {
+                                memberRoles[targetUid] = GroupRole.MEMBER
+                                canToggle[targetUid] = false
+                                removalVotes.remove(targetUid)
+                            }
+                            showRemovalDialogFor = null
+                        },
+                        enabled = myName.isNotBlank()
+                    ) { Text("Initiate Vote") }
+                },
+                dismissButton = { TextButton(onClick = { showRemovalDialogFor = null }) { Text("Cancel") } }
+            )
         }
     }
 }

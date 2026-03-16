@@ -337,7 +337,7 @@ fun GroupCard(
                                 val updated = GroupEntry(group)
                                 updated.applyForAdmin(currentUid)
                                 group = updated
-                                onEdited(updated)
+                                //onEdited(updated) TODO: keep?
                             }
                         }
                     )

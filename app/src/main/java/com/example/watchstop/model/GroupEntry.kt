@@ -18,6 +18,7 @@ data class GroupEntry(
     var description: String,
     // All member keys are Firebase UIDs
     val groupMemberNames: MutableList<String> = mutableListOf(),
+    val pendingInvitations: MutableSet<String> = mutableSetOf(),
     val memberRoles: MutableMap<String, GroupRole> = mutableMapOf(),
     val locationSharingEnabled: MutableMap<String, Boolean> = mutableMapOf(),
     val canToggleSharing: MutableMap<String, Boolean> = mutableMapOf(),
@@ -32,6 +33,7 @@ data class GroupEntry(
         eventDateTime = other.eventDateTime,
         description = other.description,
         groupMemberNames = other.groupMemberNames.toMutableList(),
+        pendingInvitations = other.pendingInvitations.toMutableSet(),
         memberRoles = other.memberRoles.toMutableMap(),
         locationSharingEnabled = other.locationSharingEnabled.toMutableMap(),
         canToggleSharing = other.canToggleSharing.toMutableMap(),
@@ -47,10 +49,20 @@ data class GroupEntry(
 
     fun addMember(uid: String, role: GroupRole) {
         if (!groupMemberNames.contains(uid)) groupMemberNames.add(uid)
+        pendingInvitations.remove(uid)
         memberRoles[uid] = role
         locationSharingEnabled[uid] = false
+        // Requirement: Administrators or Super-Administrators can disallow a user from disabling location sharing.
+        // Members by default might not be allowed to toggle if an admin says so.
+        // Initial state: Members cannot toggle, Admins can.
         canToggleSharing[uid] = role != GroupRole.MEMBER
         tripStatus[uid] = TripStatus.INACTIVE
+    }
+
+    fun inviteMember(uid: String) {
+        if (!groupMemberNames.contains(uid)) {
+            pendingInvitations.add(uid)
+        }
     }
 
     fun setCanToggleSharing(uid: String, allowed: Boolean) {
@@ -60,6 +72,7 @@ data class GroupEntry(
     // ─── Location Sharing ──────────────────────────────────────────────────
 
     fun toggleSharing(uid: String): Boolean {
+        // Requirement: A user may stop sharing their location only if permitted by an Administrator or Super-Administrator.
         if (canToggleSharing[uid] != true) return false
         val current = locationSharingEnabled[uid] ?: false
         locationSharingEnabled[uid] = !current
@@ -74,6 +87,10 @@ data class GroupEntry(
 
     fun setTripStatus(uid: String, status: TripStatus) {
         tripStatus[uid] = status
+        // Requirement: During active trips, every member’s live location is shared with the group.
+        if (status == TripStatus.TRAVELLING) {
+            locationSharingEnabled[uid] = true
+        }
         // Arriving stops sharing automatically
         if (status == TripStatus.ARRIVED) {
             locationSharingEnabled[uid] = false
@@ -98,11 +115,13 @@ data class GroupEntry(
         val votes = adminApplicationVotes.getOrPut(applicant) { mutableSetOf() }
         votes.add(voterUid)
 
+        // Requirement: Super-Administrator directly approves the request.
         if (voterRole == GroupRole.SUPER_ADMIN) {
             promoteToAdmin(applicant)
             return true
         }
 
+        // Requirement: A majority of group members vote in favor
         val eligibleVoters = groupMemberNames.filter { it != applicant }
         if (votes.size > eligibleVoters.size / 2) {
             promoteToAdmin(applicant)
@@ -122,6 +141,7 @@ data class GroupEntry(
 
     fun voteToRemoveAdmin(targetUid: String, voterUid: String): Boolean {
         val targetRole = memberRoles[targetUid] ?: return false
+        // Requirement: Super-Administrator cannot be removed or kicked from the group.
         if (targetRole == GroupRole.SUPER_ADMIN) return false
         if (targetRole != GroupRole.ADMIN) return false
         if (targetUid == voterUid) return false
@@ -129,6 +149,7 @@ data class GroupEntry(
         val votes = votesToRemoveAdmin.getOrPut(targetUid) { mutableSetOf() }
         votes.add(voterUid)
 
+        // Requirement: If a majority agrees, the administrator role is revoked.
         val eligibleVoters = groupMemberNames.filter { it != targetUid }
         if (votes.size > eligibleVoters.size / 2) {
             memberRoles[targetUid] = GroupRole.MEMBER

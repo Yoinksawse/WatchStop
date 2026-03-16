@@ -17,6 +17,7 @@ import com.google.firebase.database.database
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.tasks.await
 import java.time.Instant
 import java.time.LocalDateTime
@@ -98,48 +99,140 @@ object FirebaseRepository {
     // ── Groups ────────────────────────────────────────────────────────────
 
     /**
-     * Save or update a group. All member keys are UIDs.
-     * New groups: groupId is null, Firebase generates one.
-     * Updates: pass the existing groupId.
+     * Save a NEW group only. groupId must be null — Firebase generates the key.
+     * Never call this to update an existing group; use updateGroupMetadata instead.
      */
     @RequiresApi(Build.VERSION_CODES.O)
     suspend fun saveGroup(group: GroupEntry, groupId: String? = null): String {
-        Log.d("saveGroup", "entered — currentUid=${currentUid}, isLoggedIn=${UserProfileObject.isLoggedIn}, title=${group.title}")
-
+        Log.d("saveGroup", "entered — currentUid=${currentUid}, title=${group.title}")
         ensureAuth()
+
         val id = groupId ?: db.child("groups").push().key
         ?: error("Could not generate group key")
 
-        val payload = mapOf(
-            "title" to group.title,
-            "description" to group.description,
-            "eventDateTimeEpoch" to group.eventDateTime
+        // Use multi-path updateChildren instead of setValue so each path is
+        // evaluated against its own rule — avoids root-level permission conflicts.
+        val updates = mutableMapOf<String, Any?>(
+            "groups/$id/title"              to group.title,
+            "groups/$id/description"        to group.description,
+            "groups/$id/eventDateTimeEpoch" to group.eventDateTime
                 .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-            "memberIds" to group.groupMemberNames.associateWith { true },
-            "memberRoles" to group.memberRoles.mapValues { it.value.name },
-            "locationSharingEnabled" to group.locationSharingEnabled,
-            "canToggleSharing" to group.canToggleSharing,
-            "tripStatus" to group.tripStatus.mapValues { it.value.name },
-            "adminApplications" to group.adminApplications.associateWith { true },
-            "adminApplicationVotes" to group.adminApplicationVotes
+            "groups/$id/memberRoles"        to group.memberRoles.mapValues { it.value.name },
+            "groups/$id/locationSharingEnabled" to group.locationSharingEnabled,
+            "groups/$id/canToggleSharing"   to group.canToggleSharing,
+            "groups/$id/tripStatus"         to group.tripStatus.mapValues { it.value.name },
+            "groups/$id/adminApplications"  to group.adminApplications.associateWith { true },
+            "groups/$id/adminApplicationVotes" to group.adminApplicationVotes
                 .mapValues { it.value.associateWith { true } },
-            "votesToRemoveAdmin" to group.votesToRemoveAdmin
+            "groups/$id/votesToRemoveAdmin" to group.votesToRemoveAdmin
                 .mapValues { it.value.associateWith { true } }
         )
 
-        db.child("groups").child(id).setValue(payload).await()
+        // memberIds — each written individually so memberIds/$uid rule is satisfied
+        for (uid in group.groupMemberNames) {
+            updates["groups/$id/memberIds/$uid"] = true
+        }
 
-        // index this group for every member
-        val updates = mutableMapOf<String, Any>()
+        // pendingInvitations — same
+        for (uid in group.pendingInvitations) {
+            updates["groups/$id/pendingInvitations/$uid"] = true
+        }
+
+        // User index entries
         for (memberUid in group.groupMemberNames) {
             updates["users/$memberUid/groups/$id"] = true
+        }
+        for (invitedUid in group.pendingInvitations) {
+            updates["users/$invitedUid/invitations/$id"] = true
+        }
+
+        db.updateChildren(updates).await()
+        Log.d("FirebaseRepository", "saveGroup SUCCESS id=$id")
+        return id
+    }
+
+    /**
+     * Update only the metadata fields of an existing group (title, description, eventDateTime,
+     * memberRoles, canToggleSharing, adminApplications, adminApplicationVotes, votesToRemoveAdmin).
+     *
+     * Critically, this never touches memberIds or pendingInvitations — those are managed
+     * exclusively by acceptInvitation / cancelInvitation / inviteToGroup / removeMemberFromGroup.
+     * This prevents the "save stomps newly-joined members" bug.
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    suspend fun updateGroupMetadata(groupId: String, group: GroupEntry) {
+        ensureAuth()
+        val updates = mutableMapOf<String, Any?>(
+            "groups/$groupId/title" to group.title,
+            "groups/$groupId/description" to group.description,
+            "groups/$groupId/eventDateTimeEpoch" to group.eventDateTime
+                .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+            "groups/$groupId/memberRoles" to group.memberRoles.mapValues { it.value.name },
+            "groups/$groupId/canToggleSharing" to group.canToggleSharing,
+            "groups/$groupId/adminApplications" to group.adminApplications.associateWith { true },
+            "groups/$groupId/adminApplicationVotes" to group.adminApplicationVotes
+                .mapValues { it.value.associateWith { true } },
+            "groups/$groupId/votesToRemoveAdmin" to group.votesToRemoveAdmin
+                .mapValues { it.value.associateWith { true } }
+        )
+
+        // Write removals for any members who were kicked via the UI.
+        // We diff against the live Firebase memberIds so we don't touch join/leave races.
+        val liveSnap = db.child("groups").child(groupId).child("memberIds").get().await()
+        val liveMembers = liveSnap.children.mapNotNull { it.key }.toSet()
+        val updatedMembers = group.groupMemberNames.toSet()
+        val removed = liveMembers - updatedMembers
+        for (uid in removed) {
+            updates["groups/$groupId/memberIds/$uid"] = null
+            updates["groups/$groupId/memberRoles/$uid"] = null
+            updates["groups/$groupId/locationSharingEnabled/$uid"] = null
+            updates["groups/$groupId/canToggleSharing/$uid"] = null
+            updates["groups/$groupId/tripStatus/$uid"] = null
+            updates["users/$uid/groups/$groupId"] = null
         }
 
         db.updateChildren(updates).await()
 
-        Log.d("FirebaseRepository", "saveGroup SUCCESS id=$id")
+        // Clean up groupLocations for removed members
+        for (uid in removed) {
+            db.child("groupLocations").child(groupId).child(uid).removeValue().await()
+        }
 
-        return id
+        Log.d("FirebaseRepository", "updateGroupMetadata SUCCESS id=$groupId, removed=$removed")
+    }
+
+    /** Admin declines a member's admin application — removes it without promoting. */
+    suspend fun declineAdminApplication(groupId: String, applicantUid: String) {
+        ensureAuth()
+        val updates = mapOf<String, Any?>(
+            "groups/$groupId/adminApplications/$applicantUid" to null,
+            "groups/$groupId/adminApplicationVotes/$applicantUid" to null
+        )
+        db.updateChildren(updates).await()
+    }
+
+    /**
+     * Cancel a pending invitation. Atomically removes the entry from both the group
+     * and the invitee's user index so the notification disappears on their screen.
+     */
+    suspend fun cancelInvitation(groupId: String, targetUid: String) {
+        ensureAuth()
+        val updates = mapOf<String, Any?>(
+            "groups/$groupId/pendingInvitations/$targetUid" to null,
+            "users/$targetUid/invitations/$groupId" to null
+        )
+        db.updateChildren(updates).await()
+        Log.d("FirebaseRepository", "cancelInvitation: removed $targetUid from $groupId")
+    }
+
+    /** Directly promote a member to Admin. Only SuperAdmins should call this. */
+    suspend fun promoteToAdmin(groupId: String, targetUid: String) {
+        ensureAuth()
+        val updates = mapOf<String, Any?>(
+            "groups/$groupId/memberRoles/$targetUid"     to GroupRole.ADMIN.name,
+            "groups/$groupId/canToggleSharing/$targetUid" to true
+        )
+        db.updateChildren(updates).await()
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -149,27 +242,29 @@ object FirebaseRepository {
         // Read member list while group still exists
         val snap = db.child("groups").child(groupId).get().await()
         val memberIds = snap.child("memberIds").children.mapNotNull { it.key }
+        val invitedIds = snap.child("pendingInvitations").children.mapNotNull { it.key }
 
-        // Phase 1: delete group and groupLocations while memberRoles still readable
+        // Phase 1: delete group and groupLocations
         db.updateChildren(mapOf<String, Any?>(
             "groups/$groupId" to null,
             "groupLocations/$groupId" to null
         )).await()
 
-        // Phase 2: clean up user index entries (group already gone, just needs auth != null)
-        if (memberIds.isNotEmpty()) {
-            val userIndexCleanup = memberIds.associate { uid ->
-                "users/$uid/groups/$groupId" to null
-            }
-            db.updateChildren(userIndexCleanup).await()
+        // Phase 2: clean up user index entries
+        val cleanup = mutableMapOf<String, Any?>()
+        memberIds.forEach { uid -> cleanup["users/$uid/groups/$groupId"] = null }
+        invitedIds.forEach { uid -> cleanup["users/$uid/invitations/$groupId"] = null }
+
+        if (cleanup.isNotEmpty()) {
+            db.updateChildren(cleanup).await()
         }
     }
 
-    /**
-     * Observe all groups the given UID is a member of.
-     * Keeps the listener alive even on permission errors so it recovers
-     * once auth resolves — never crashes the app.
-     */
+    suspend fun getGroup(groupId: String): GroupEntry? {
+        val snap = db.child("groups").child(groupId).get().await()
+        return snap.toGroupEntry()
+    }
+
     fun observeMyGroups(uid: String): Flow<List<Pair<String, GroupEntry>>> = callbackFlow {
         if (uid.isEmpty()) {
             trySend(emptyList())
@@ -179,41 +274,157 @@ object FirebaseRepository {
 
         val indexRef = db.child("users").child(uid).child("groups")
 
-
         val listener = indexRef.addValueEventListener(object : ValueEventListener {
             @RequiresApi(Build.VERSION_CODES.O)
             override fun onDataChange(snapshot: DataSnapshot) {
-                Log.d("FIREBASE", "Children count: ${snapshot.childrenCount}")
                 val groupIds = snapshot.children.mapNotNull { it.key }
-
                 if (groupIds.isEmpty()) {
                     trySend(emptyList())
                     return
                 }
 
                 val groups = mutableListOf<Pair<String, GroupEntry>>()
-
+                var loadedCount = 0
                 groupIds.forEach { id ->
                     db.child("groups").child(id).get()
                         .addOnSuccessListener { snap ->
                             val entry = snap.toGroupEntry()
                             if (entry != null) {
                                 groups.add(id to entry)
+                            }
+                            loadedCount++
+                            if (loadedCount == groupIds.size) {
+                                trySend(groups.toList())
+                            }
+                        }
+                        .addOnFailureListener {
+                            loadedCount++
+                            if (loadedCount == groupIds.size) {
                                 trySend(groups.toList())
                             }
                         }
                 }
             }
-
-            override fun onCancelled(error: DatabaseError) {
-                Log.w("FirebaseRepository", "observeMyGroups cancelled: ${error.message}")
-                trySend(emptyList())
-            }
+            override fun onCancelled(error: DatabaseError) { trySend(emptyList()) }
         })
-
         awaitClose { indexRef.removeEventListener(listener) }
     }
+
+    fun observeMyInvitations(uid: String): Flow<List<Pair<String, GroupEntry>>> = callbackFlow {
+        if (uid.isEmpty()) { trySend(emptyList()); awaitClose {}; return@callbackFlow }
+        val ref = db.child("users").child(uid).child("invitations")
+        val listener = ref.addValueEventListener(object : ValueEventListener {
+            @RequiresApi(Build.VERSION_CODES.O)
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val ids = snapshot.children.mapNotNull { it.key }
+                if (ids.isEmpty()) { trySend(emptyList()); return }
+                val list = mutableListOf<Pair<String, GroupEntry>>()
+                var count = 0
+                ids.forEach { id ->
+                    db.child("groups").child(id).get().addOnSuccessListener { snap ->
+                        snap.toGroupEntry()?.let { list.add(id to it) }
+                        if (++count == ids.size) trySend(list.toList())
+                    }.addOnFailureListener { if (++count == ids.size) trySend(list.toList()) }
+                }
+            }
+            override fun onCancelled(e: DatabaseError) { trySend(emptyList()) }
+        })
+        awaitClose { ref.removeEventListener(listener) }
+    }
+
+    fun observePendingInvitationsSentByMe(groupId: String): Flow<List<String>> = callbackFlow {
+        val ref = Firebase.database.reference
+            .child("groups")
+            .child(groupId)
+            .child("pendingInvitations")
+
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = snapshot.children.mapNotNull { it.key }
+                trySend(list)
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        }
+
+        ref.addValueEventListener(listener)
+        awaitClose { ref.removeEventListener(listener) }
+    }
+
+    // ── Notifications ─────────────────────────────────────────────────────
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun observeAllNotifications(uid: String): Flow<List<NotificationItem>> {
+        return combine(
+            observeMyInvitations(uid),
+            observeMyGroups(uid)
+        ) { invitations, groups ->
+            val list = mutableListOf<NotificationItem>()
+
+            // 1. Invitations
+            invitations.forEach { (id, group) ->
+                list.add(NotificationItem.Invitation(id, group.title))
+            }
+
+            // 2. Admin Applications (if current user is an Admin/SuperAdmin)
+            groups.forEach { (groupId, group) ->
+                val myRole = group.getRole(uid)
+                val isAdmin = myRole == GroupRole.ADMIN || myRole == GroupRole.SUPER_ADMIN
+
+                if (isAdmin) {
+                    group.adminApplications.filter { it != uid }.forEach { applicantUid ->
+                        list.add(NotificationItem.AdminApplication(groupId, group.title, applicantUid))
+                    }
+                }
+
+                // 3. Removal Votes (if current user is a member and hasn't voted yet, and not the target)
+                group.votesToRemoveAdmin.forEach { (targetUid, voters) ->
+                    if (targetUid != uid && !voters.contains(uid)) {
+                        list.add(NotificationItem.RemovalVote(groupId, group.title, targetUid))
+                    }
+                }
+            }
+            list
+        }
+    }
+
     // ── Group Actions ─────────────────────────────────────────────────────
+
+    suspend fun inviteToGroup(groupId: String, targetUid: String) {
+        ensureAuth()
+        val updates = mapOf(
+            "groups/$groupId/pendingInvitations/$targetUid" to true,
+            "users/$targetUid/invitations/$groupId" to true
+        )
+        db.updateChildren(updates).await()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    suspend fun acceptInvitation(groupId: String) {
+        val uid = ensureAuth()
+        val snap = db.child("groups").child(groupId).get().await()
+        snap.toGroupEntry() ?: throw IllegalStateException("Group not found")
+
+        val updates = mapOf<String, Any?>(
+            "groups/$groupId/memberIds/$uid"              to true,
+            "groups/$groupId/pendingInvitations/$uid"     to null,
+            "groups/$groupId/memberRoles/$uid"            to GroupRole.MEMBER.name,
+            "groups/$groupId/locationSharingEnabled/$uid" to false,
+            "groups/$groupId/canToggleSharing/$uid"       to false,
+            "groups/$groupId/tripStatus/$uid"             to TripStatus.INACTIVE.name,
+            "users/$uid/groups/$groupId"                  to true,
+            "users/$uid/invitations/$groupId"             to null
+        )
+        db.updateChildren(updates).await()
+    }
+
+    suspend fun declineInvitation(groupId: String) {
+        val uid = ensureAuth()
+        val updates = mapOf<String, Any?>(
+            "groups/$groupId/pendingInvitations/$uid" to null,
+            "users/$uid/invitations/$groupId" to null
+        )
+        db.updateChildren(updates).await()
+    }
 
     /** Toggle location sharing for a UID. Enforces canToggleSharing. */
     suspend fun toggleLocationSharing(groupId: String, uid: String, enabled: Boolean) {
@@ -310,6 +521,7 @@ object FirebaseRepository {
         )
         groupRef.updateChildren(updates).await()
         db.child("groupLocations").child(groupId).child(targetUid).removeValue().await()
+        db.child("users").child(targetUid).child("groups").child(groupId).removeValue().await()
     }
 
     /** Set trip status. ARRIVED automatically stops location sharing. */
@@ -318,6 +530,9 @@ object FirebaseRepository {
         val updates = mutableMapOf<String, Any?>(
             "groups/$groupId/tripStatus/$uid" to status.name
         )
+        if (status == TripStatus.TRAVELLING) {
+            updates["groups/$groupId/locationSharingEnabled/$uid"] = true
+        }
         if (status == TripStatus.ARRIVED) {
             updates["groups/$groupId/locationSharingEnabled/$uid"] = false
         }
@@ -369,27 +584,6 @@ object FirebaseRepository {
             uid to (uidsSnap.child(uid).getValue(String::class.java) ?: userName)
         } catch (e: Exception) {
             null
-        }
-    }
-
-
-    /** Add a member to a group atomically. */
-    suspend fun addMemberToGroup(groupId: String, targetUid: String) {
-        ensureAuth()
-        Log.d("addMember", "adding $targetUid to group $groupId, caller=${currentUid}")
-        val updates = mapOf(
-            "groups/$groupId/memberIds/$targetUid" to true,
-            "groups/$groupId/memberRoles/$targetUid" to GroupRole.MEMBER.name,
-            "groups/$groupId/locationSharingEnabled/$targetUid" to false,
-            "groups/$groupId/canToggleSharing/$targetUid" to false,
-            "groups/$groupId/tripStatus/$targetUid" to TripStatus.INACTIVE.name,
-            "users/$targetUid/groups/$groupId" to true
-        )
-        try {
-            db.updateChildren(updates).await()
-            Log.d("addMember", "SUCCESS")
-        } catch (e: Exception) {
-            Log.e("addMember", "FAILED: ${e.message}", e)
         }
     }
 
@@ -518,7 +712,8 @@ object FirebaseRepository {
             .addOnFailureListener {
                 Toast.makeText(context, "Failed to save geofence", Toast.LENGTH_SHORT).show()
                 Log.e("FirebaseRepository", "Geofence upload failed", it)
-            }    }
+            }
+    }
 
     /**
      * Removes geofence from Firebase.
@@ -535,9 +730,16 @@ object FirebaseRepository {
         }
         val key = geofenceName.filter { it.isLetterOrDigit() }
         database.child(userId).child(key).removeValue()
-
         Toast.makeText(context, "Geofence Deleted from Cloud", Toast.LENGTH_SHORT).show()
     }
+}
+
+// ── Notification Item Sealed Class ───────────────────────────────────────────
+
+sealed class NotificationItem {
+    data class Invitation(val groupId: String, val groupTitle: String) : NotificationItem()
+    data class AdminApplication(val groupId: String, val groupTitle: String, val applicantUid: String) : NotificationItem()
+    data class RemovalVote(val groupId: String, val groupTitle: String, val targetUid: String) : NotificationItem()
 }
 
 // ── Data classes ──────────────────────────────────────────────────────────────
@@ -562,6 +764,7 @@ fun DataSnapshot.toGroupEntry(): GroupEntry? {
     val dateTime = LocalDateTime.ofInstant(Instant.ofEpochMilli(epoch), ZoneId.systemDefault())
 
     val memberIds = child("memberIds").children.mapNotNull { it.key }.toMutableList()
+    val invitations = child("pendingInvitations").children.mapNotNull { it.key }.toMutableSet()
 
     val memberRoles = child("memberRoles").children.associate { snap ->
         (snap.key ?: "") to (try {
@@ -599,6 +802,7 @@ fun DataSnapshot.toGroupEntry(): GroupEntry? {
         eventDateTime = dateTime,
         description = description,
         groupMemberNames = memberIds,
+        pendingInvitations = invitations,
         memberRoles = memberRoles,
         locationSharingEnabled = locationSharing,
         canToggleSharing = canToggle,

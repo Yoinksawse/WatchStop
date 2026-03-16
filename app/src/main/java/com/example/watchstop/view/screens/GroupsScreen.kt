@@ -4,17 +4,22 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -26,6 +31,7 @@ import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.model.GroupEntry
 import com.example.watchstop.model.GroupRole
 import com.example.watchstop.data.FirebaseRepository
+import com.example.watchstop.data.NotificationItem
 import com.example.watchstop.view.GroupCard
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.CoroutineScope
@@ -40,94 +46,90 @@ fun GroupsScreen() {
     val appScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
     val context = LocalContext.current
 
-    val isLoggedIn = UserProfileObject.isLoggedIn  // reads Compose MutableState — triggers recomposition
+    val isLoggedIn = UserProfileObject.isLoggedIn
     val uid = if (isLoggedIn) UserProfileObject.uid ?: "" else ""
+    
     val myGroups by remember(uid) {
         FirebaseRepository.observeMyGroups(uid)
     }.collectAsState(initial = emptyList())
+
+    val notifications by remember(uid) {
+        FirebaseRepository.observeAllNotifications(uid)
+    }.collectAsState(initial = emptyList())
+
+    var selectedTabIndex by remember { mutableIntStateOf(0) }
+    val tabs = listOf("Groups", "Notifications")
 
     var showCreationDialog by remember { mutableStateOf(false) }
     var showLoginPrompt by remember { mutableStateOf(false) }
 
     WatchStopTheme(darkTheme = darkmode) {
         Scaffold(
-            floatingActionButton = {
-                FloatingActionButton(
-                    containerColor = if (darkmode) MaterialTheme.colorScheme.secondary
-                    else MaterialTheme.colorScheme.primary,
-                    contentColor = Color.White,
-                    shape = RoundedCornerShape(16.dp),
-                    onClick = {
-                        if (UserProfileObject.isLoggedIn) showCreationDialog = true
-                        else showLoginPrompt = true
-                    }
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Create group",
-                        modifier = Modifier.size(24.dp))
-                }
-            }
-        ) { innerPadding ->
-            Column(modifier = Modifier.padding(innerPadding)) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "My Groups",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (darkmode) Color.White else Color.Black,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                )
-
-                //Log.d("UserID", uid)
-                if (myGroups.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Card(
-                            shape = RoundedCornerShape(12.dp),
-                            elevation = CardDefaults.cardElevation(0.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (darkmode) Color(0xFF1C1C1E) else Color.White
-                            ),
-                            modifier = Modifier.fillMaxWidth().padding(32.dp)
-                        ) {
-                            Text(
-                                text = "No Groups yet — tap + to create one",
-                                modifier = Modifier
-                                    .padding(vertical = 40.dp, horizontal = 16.dp)
-                                    .align(Alignment.CenterHorizontally),
-                                style = TextStyle(
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Color(0xFF8E8E93),
-                                    letterSpacing = (-0.4).sp
-                                )
-                            )
-                        }
-                    }
-                } else {
-                    Log.d("UserID", "mygroups is not empty!")
-                    LazyColumn {
-                        items(myGroups) { (groupId, group) ->
-                            GroupCard(
-                                groupId = groupId,
-                                groupEntryParameter = group,
-                                onEdited = { updated ->
-                                    appScope.launch {
-                                        Log.d("Group Saved", "" + myGroups.size)
-                                        FirebaseRepository.saveGroup(updated, groupId)
-                                    }
-                                },
-                                onDeleted = {
-                                    appScope.launch {
-                                        FirebaseRepository.deleteGroup(groupId)
+            topBar = {
+                Column {
+                    TabRow(
+                        selectedTabIndex = selectedTabIndex,
+                        containerColor = if (darkmode) Color(0xFF121212) else Color.White,
+                        contentColor = Color(0xFF007AFF),
+                        divider = {}
+                    ) {
+                        tabs.forEachIndexed { index, title ->
+                            Tab(
+                                selected = selectedTabIndex == index,
+                                onClick = { selectedTabIndex = index },
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(title, fontWeight = FontWeight.Bold)
+                                        if (index == 1 && notifications.isNotEmpty()) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(18.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color.Red),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = notifications.size.toString(),
+                                                    color = Color.White,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             )
                         }
                     }
                 }
+            },
+            floatingActionButton = {
+                if (selectedTabIndex == 0) {
+                    FloatingActionButton(
+                        containerColor = if (darkmode) MaterialTheme.colorScheme.secondary
+                        else MaterialTheme.colorScheme.primary,
+                        contentColor = Color.White,
+                        shape = RoundedCornerShape(16.dp),
+                        onClick = {
+                            if (UserProfileObject.isLoggedIn) showCreationDialog = true
+                            else showLoginPrompt = true
+                        }
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Create group", modifier = Modifier.size(24.dp))
+                    }
+                }
+            }
+        ) { innerPadding ->
+            Column(modifier = Modifier.padding(innerPadding)) {
+                if (selectedTabIndex == 0) {
+                    GroupsTabContent(myGroups, appScope)
+                } else {
+                    NotificationsTabContent(notifications, appScope)
+                }
             }
         }
 
-        // ── Login prompt ──────────────────────────────────────────────────
         if (showLoginPrompt) {
             AlertDialog(
                 onDismissRequest = { showLoginPrompt = false },
@@ -145,25 +147,206 @@ fun GroupsScreen() {
             )
         }
 
-        // ── Group creation dialog ─────────────────────────────────────────
-
         if (showCreationDialog) {
             GroupCreationDialog(
                 onDismiss = { showCreationDialog = false },
                 onMake = { newGroup ->
-                    Log.d("GroupsScreen", "onMake called — uid=${UserProfileObject.uid}, title=${newGroup.title}, members=${newGroup.groupMemberNames}")
-
                     showCreationDialog = false
                     appScope.launch {
-                        try {
-                            FirebaseRepository.saveGroup(newGroup)
-                            Log.d("GroupsScreen", "saveGroup SUCCESS")
-                        } catch (e: Exception) {
-                            Log.e("GroupsScreen", "saveGroup FAILED: ${e.message}", e)
-                        }
+                        try { FirebaseRepository.saveGroup(newGroup) }
+                        catch (e: Exception) { Log.e("GroupsScreen", "saveGroup FAILED: ${e.message}", e) }
                     }
                 }
             )
+        }
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+private fun GroupsTabContent(
+    myGroups: List<Pair<String, GroupEntry>>,
+    appScope: CoroutineScope
+) {
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        item {
+            Text(
+                text = "My Groups",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (darkmode) Color.White else Color.Black,
+                modifier = Modifier.padding(16.dp)
+            )
+        }
+
+        if (myGroups.isEmpty()) {
+            item {
+                Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                    Text("No Groups yet — tap + to create one", color = Color.Gray)
+                }
+            }
+        } else {
+            items(myGroups) { (groupId, group) ->
+                GroupCard(
+                    groupId = groupId,
+                    groupEntryParameter = group,
+                    onEdited = { updated ->
+                        appScope.launch {
+                            try {
+                                FirebaseRepository.updateGroupMetadata(groupId, updated)
+                            } catch (e: Exception) {
+                                Log.e("GroupsScreen", "updateGroupMetadata failed: ${e.message}")
+                            }
+                        }
+                    },
+                    onDeleted = {
+                        appScope.launch { FirebaseRepository.deleteGroup(groupId) }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+private fun NotificationsTabContent(
+    notifications: List<NotificationItem>,
+    appScope: CoroutineScope
+) {
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        item {
+            Text(
+                text = "Notifications",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (darkmode) Color.White else Color.Black,
+                modifier = Modifier.padding(16.dp)
+            )
+        }
+
+        if (notifications.isEmpty()) {
+            item {
+                Box(modifier = Modifier.fillMaxSize().padding(top = 100.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.NotificationsNone, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color.Gray)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("No new notifications", color = Color.Gray)
+                    }
+                }
+            }
+        } else {
+            items(notifications) { item ->
+                NotificationRow(item, appScope)
+            }
+        }
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
+    val backgroundColor = if (darkmode) Color(0xFF1C1C1E) else Color.White
+    val primaryText = if (darkmode) Color.White else Color.Black
+    val secondaryText = if (darkmode) Color(0xFF8E8E93) else Color(0xFF636366)
+
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = backgroundColor),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val icon = when (item) {
+                    is NotificationItem.Invitation -> Icons.Default.GroupAdd
+                    is NotificationItem.AdminApplication -> Icons.Default.AdminPanelSettings
+                    is NotificationItem.RemovalVote -> Icons.Default.HowToVote
+                }
+                val iconColor = when (item) {
+                    is NotificationItem.Invitation -> Color(0xFF007AFF)
+                    is NotificationItem.AdminApplication -> Color(0xFF34C759)
+                    is NotificationItem.RemovalVote -> Color(0xFFFF3B30)
+                }
+                Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = when (item) {
+                        is NotificationItem.Invitation -> "Group Invitation"
+                        is NotificationItem.AdminApplication -> "Admin Application"
+                        is NotificationItem.RemovalVote -> "Administrator Removal Vote"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = iconColor,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = when (item) {
+                    is NotificationItem.Invitation -> "You've been invited to join \"${item.groupTitle}\""
+                    is NotificationItem.AdminApplication -> {
+                        var name by remember { mutableStateOf(item.applicantUid) }
+                        LaunchedEffect(item.applicantUid) { name = FirebaseRepository.getUsername(item.applicantUid) }
+                        "$name applied for Admin in \"${item.groupTitle}\""
+                    }
+                    is NotificationItem.RemovalVote -> {
+                        var name by remember { mutableStateOf(item.targetUid) }
+                        LaunchedEffect(item.targetUid) { name = FirebaseRepository.getUsername(item.targetUid) }
+                        "Vote to remove $name as Admin in \"${item.groupTitle}\""
+                    }
+                },
+                color = primaryText,
+                fontSize = 15.sp
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                when (item) {
+                    is NotificationItem.Invitation -> {
+                        Button(
+                            onClick = { appScope.launch { FirebaseRepository.acceptInvitation(item.groupId) } },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34C759))
+                        ) { Text("Accept") }
+                        OutlinedButton(
+                            onClick = { appScope.launch { FirebaseRepository.declineInvitation(item.groupId) } },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Decline") }
+                    }
+                    is NotificationItem.AdminApplication -> {
+                        Button(
+                            onClick = {
+                                appScope.launch {
+                                    FirebaseRepository.voteForAdminApplication(
+                                        item.groupId, item.applicantUid, UserProfileObject.uid ?: "")
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF))
+                        ) { Text("Approve") }
+                        OutlinedButton(
+                            onClick = {
+                                appScope.launch {
+                                    FirebaseRepository.declineAdminApplication(
+                                        item.groupId, item.applicantUid)
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Decline", color = Color(0xFFFF3B30)) }
+                    }
+
+                    is NotificationItem.RemovalVote -> {
+                        Button(
+                            onClick = { appScope.launch { FirebaseRepository.voteToRemoveAdmin(item.groupId, item.targetUid, UserProfileObject.uid ?: "") } },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3B30))
+                        ) { Text("Vote to Remove") }
+                    }
+                }
+            }
         }
     }
 }
@@ -182,7 +365,6 @@ private fun GroupCreationDialog(
         title = { Text("New Group") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                //group name input field
                 OutlinedTextField(
                     value = groupTitle,
                     onValueChange = { groupTitle = it },
@@ -190,24 +372,19 @@ private fun GroupCreationDialog(
                     singleLine = true
                 )
 
-                //creator role selector
                 Text("Your role as creator:", style = MaterialTheme.typography.bodyMedium)
                 listOf(
-                    GroupRole.SUPER_ADMIN to "Super Admin — cannot be removed, full control",
-                    GroupRole.ADMIN to "Admin — can be voted out by other members"
+                    GroupRole.SUPER_ADMIN to "Super Admin — highest authority",
+                    GroupRole.ADMIN to "Admin — can be voted out"
                 ).forEach { (role, description) ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().clickable { selectedRole = role }
                     ) {
-                        RadioButton(
-                            selected = selectedRole == role,
-                            onClick = { selectedRole = role }
-                        )
+                        RadioButton(selected = selectedRole == role, onClick = { selectedRole = role })
                         Column {
                             Text(role.displayName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            Text(description, fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(description, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -217,23 +394,15 @@ private fun GroupCreationDialog(
             TextButton(
                 onClick = {
                     if (groupTitle.isNotBlank()) {
-                        // Read uid at click time — guaranteed non-null here since isLoggedIn was true
                         val currentUid = UserProfileObject.uid ?: return@TextButton
-                        val entry = GroupEntry(
-                            title = groupTitle.trim(),
-                            eventDateTime = LocalDateTime.now(),
-                            description = ""
-                        ).apply {
-                            addMember(currentUid, selectedRole)
-                        }
+                        val entry = GroupEntry(title = groupTitle.trim(), eventDateTime = LocalDateTime.now(), description = "")
+                            .apply { addMember(currentUid, selectedRole) }
                         onMake(entry)
                     }
                 },
                 enabled = groupTitle.isNotBlank()
             ) { Text("Create") }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }

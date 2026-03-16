@@ -5,17 +5,23 @@
       "$uid": {
         ".read": "$uid === auth.uid",
         ".write": "$uid === auth.uid",
+        "invitations": {
+          "$groupId": {
+            ".read": "$uid === auth.uid",
+            ".write": "auth != null && ($uid === auth.uid || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
+          }
+        },
         "groups": {
           "$groupId": {
             ".read": "$uid === auth.uid",
-            ".write": "auth != null"
+            ".write": "auth != null && ($uid === auth.uid || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
           }
         }
       }
     },
     "uids": {
+      ".read": "auth != null",
       "$uid": {
-        ".read": "auth != null",
         ".write": "$uid === auth.uid"
       }
     },
@@ -43,14 +49,69 @@
     },
     "groups": {
       "$groupId": {
-        ".read": "auth != null && data.child('memberIds').child(auth.uid).exists()",
-        ".write": "auth != null && (data.child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || data.child('memberRoles').child(auth.uid).val() === 'ADMIN' || !data.exists())"
+        ".read": "auth != null && (data.child('memberIds').child(auth.uid).exists() || data.child('pendingInvitations').child(auth.uid).exists())",
+        
+        // Root write only for admins or group creation
+        ".write": "auth != null && (!data.exists() || data.child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || data.child('memberRoles').child(auth.uid).val() === 'ADMIN')",
+        
+        "pendingInvitations": {
+          "$uid": {
+            ".write": "auth != null && ($uid === auth.uid || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
+          }
+        },
+        "memberIds": {
+          "$uid": {
+            ".write": "auth != null && ($uid === auth.uid || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
+          }
+        },
+        "memberRoles": {
+          "$uid": {
+            // Allow user to set themselves to MEMBER if they have a pending invite
+            ".write": "auth != null && (($uid === auth.uid && root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists()) || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
+          }
+        },
+        "adminApplications": {
+          "$uid": {
+            ".write": "auth != null && $uid === auth.uid && root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists()"
+          }
+        },
+        "adminApplicationVotes": {
+          "$applicantUid": {
+            "$voterUid": {
+              ".write": "auth != null && $voterUid === auth.uid && root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists()"
+            }
+          }
+        },
+        "votesToRemoveAdmin": {
+          "$targetUid": {
+            "$voterUid": {
+              ".write": "auth != null && $voterUid === auth.uid && root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists() && root.child('groups').child($groupId).child('memberRoles').child($targetUid).val() !== 'SUPER_ADMIN'"
+            }
+          }
+        },
+        "locationSharingEnabled": {
+          "$uid": {
+            // Allow initialization (setting to false) when joining
+            ".write": "auth != null && ($uid === auth.uid && (root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists() || newData.val() === true || root.child('groups').child($groupId).child('canToggleSharing').child(auth.uid).val() === true) || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
+          }
+        },
+        "tripStatus": {
+          "$uid": {
+            ".write": "auth != null && $uid === auth.uid"
+          }
+        },
+        "canToggleSharing": {
+          "$uid": {
+            // Allow user to initialize their own toggle state when joining
+            ".write": "auth != null && (($uid === auth.uid && root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists()) || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
+          }
+        }
       }
     },
     "groupLocations": {
       "$groupId": {
         ".read": "auth != null && root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists()",
-        ".write": "auth != null && root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN'",
+        ".write": "auth != null && (root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')",
         "$uid": {
           ".write": "$uid === auth.uid && root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists()"
         }
