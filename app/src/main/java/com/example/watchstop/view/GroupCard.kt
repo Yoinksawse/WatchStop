@@ -30,7 +30,7 @@ import com.example.watchstop.model.CurrentGroupObject
 import com.example.watchstop.model.GroupEntry
 import com.example.watchstop.model.GroupRole
 import com.example.watchstop.model.TripStatus
-import com.example.watchstop.service.FirebaseRepository
+import com.example.watchstop.data.FirebaseRepository
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter
@@ -107,14 +107,23 @@ fun GroupCard(
                     }
                     Text(
                         text = when {
-                            isSuperAdmin -> "Archive"
-                            isAdmin -> "Delete"
+                            isSuperAdmin -> "Disband"
+                            isAdmin -> "Disband"
                             else -> "Quit"
                         },
                         color = destructiveColor,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clickable { onDeleted() }
+                        modifier = Modifier.clickable {
+                            //TODO: show confirmation dialogbox
+                            coroutineScope.launch {
+                                when {
+                                    isSuperAdmin -> FirebaseRepository.deleteGroup(groupId)
+                                    isAdmin -> onDeleted()
+                                    else -> FirebaseRepository.removeMemberFromGroup(groupId, currentUid)
+                                }
+                            }
+                        }
                     )
                 }
 
@@ -167,14 +176,14 @@ fun GroupCard(
                             // Trip status badge
                             Text(
                                 text = when (status) {
-                                    TripStatus.EN_ROUTE -> "🟡 En Route"
-                                    TripStatus.ARRIVED -> "🟢 Arrived"
-                                    TripStatus.INACTIVE -> "⚪ Inactive"
+                                    TripStatus.TRAVELLING -> "Travelling"
+                                    TripStatus.ARRIVED -> "Arrived"
+                                    TripStatus.INACTIVE -> "Inactive"
                                 },
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = when (status) {
-                                    TripStatus.EN_ROUTE -> warningColor
+                                    TripStatus.TRAVELLING -> warningColor
                                     TripStatus.ARRIVED -> successColor
                                     TripStatus.INACTIVE -> secondaryText
                                 }
@@ -280,13 +289,13 @@ fun GroupCard(
                     SketchButton(
                         text = when (currentStatus) {
                             TripStatus.INACTIVE -> "Start Trip"
-                            TripStatus.EN_ROUTE -> "Mark Arrived"
+                            TripStatus.TRAVELLING -> "Mark Arrived"
                             TripStatus.ARRIVED -> "End Trip"
                         },
                         onClick = {
                             val next = when (currentStatus) {
-                                TripStatus.INACTIVE -> TripStatus.EN_ROUTE
-                                TripStatus.EN_ROUTE -> TripStatus.ARRIVED
+                                TripStatus.INACTIVE -> TripStatus.TRAVELLING
+                                TripStatus.TRAVELLING -> TripStatus.ARRIVED
                                 TripStatus.ARRIVED -> TripStatus.INACTIVE
                             }
                             coroutineScope.launch {

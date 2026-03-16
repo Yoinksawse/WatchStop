@@ -88,8 +88,8 @@ class ProfileActivity : ComponentActivity() {
 @Composable
 private fun ProfileScreen() {
     val accountHandle = UserProfileObject.userName
+    val email = UserProfileObject.email
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var isPressed by remember { mutableStateOf(false) }
 
     Column(
@@ -136,7 +136,13 @@ private fun ProfileScreen() {
 
         Text(
             text = accountHandle,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleLarge
+        )
+
+        Text(
+            text = email,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 24.dp)
         )
 

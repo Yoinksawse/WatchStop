@@ -1,4 +1,4 @@
-package com.example.watchstop.view.screens
+package com.example.watchstop.view
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

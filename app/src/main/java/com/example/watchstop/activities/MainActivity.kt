@@ -2,6 +2,7 @@ package com.example.watchstop.activities
 
 import android.Manifest
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -75,8 +76,13 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // --- Loading Data from Cache First ---
+        UserGeofencesDatabase.loadGeofencesFromCache(this)
+        GeoAlarmsDatabase.loadAlarmsFromCache(this)
+
         // --- Persistent Session Logic ---
         val userPrefs = getSharedPreferences("WatchStopUserPrefs", MODE_PRIVATE)
+        //userPrefs.edit().clear().apply() //TODO: debug line; clear cache manually
 
         // Save credentials if just returned from a successful Login/SignUp
         val intentIdentifier = intent.getStringExtra("LOGIN_IDENTIFIER")
@@ -96,8 +102,14 @@ class MainActivity : AppCompatActivity() {
                 try {
                     UserProfileObject.signIn(savedEmail, savedPassword)
                     UserProfileObject.syncFromFirebase()
+                    
+                    // Retrieve from Firebase and then upload combined data
                     UserGeofencesDatabase.fetchGeofencesFromFirebaseDB()
                     GeoAlarmsDatabase.fetchAlarmsFromFirebaseDB()
+                    
+                    // Firebase calls above are asynchronous but the local list is populated
+                    // within the listener in those methods. We trigger a push in startObservingProfile 
+                    // of UserProfileObject once isLoggedIn becomes true.
                 } catch (e: Exception) {
                     Log.e("MainActivity", "Auto sign-in failed: ${e.message}")
                     userPrefs.edit()
@@ -108,8 +120,10 @@ class MainActivity : AppCompatActivity() {
             }
         } else {
             UserProfileObject.syncFromFirebase()
-            UserGeofencesDatabase.fetchGeofencesFromFirebaseDB()
-            GeoAlarmsDatabase.fetchAlarmsFromFirebaseDB()
+            if (UserProfileObject.isLoggedIn) {
+                UserGeofencesDatabase.fetchGeofencesFromFirebaseDB()
+                GeoAlarmsDatabase.fetchAlarmsFromFirebaseDB()
+            }
         }
 
         // --- Onboarding Logic ---

@@ -25,7 +25,7 @@ import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.model.GroupEntry
 import com.example.watchstop.model.GroupRole
-import com.example.watchstop.service.FirebaseRepository
+import com.example.watchstop.data.FirebaseRepository
 import com.example.watchstop.view.GroupCard
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.CoroutineScope
@@ -40,8 +40,8 @@ fun GroupsScreen() {
     val appScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
     val context = LocalContext.current
 
-    // uid is reactive: if auth resolves after first composition, a new Flow is created
-    val uid by remember { derivedStateOf { UserProfileObject.uid ?: "" } }
+    val isLoggedIn = UserProfileObject.isLoggedIn  // reads Compose MutableState — triggers recomposition
+    val uid = if (isLoggedIn) UserProfileObject.uid ?: "" else ""
     val myGroups by remember(uid) {
         FirebaseRepository.observeMyGroups(uid)
     }.collectAsState(initial = emptyList())
@@ -77,6 +77,7 @@ fun GroupsScreen() {
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
 
+                //Log.d("UserID", uid)
                 if (myGroups.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Card(
@@ -102,6 +103,7 @@ fun GroupsScreen() {
                         }
                     }
                 } else {
+                    Log.d("UserID", "mygroups is not empty!")
                     LazyColumn {
                         items(myGroups) { (groupId, group) ->
                             GroupCard(
@@ -109,6 +111,7 @@ fun GroupsScreen() {
                                 groupEntryParameter = group,
                                 onEdited = { updated ->
                                     appScope.launch {
+                                        Log.d("Group Saved", "" + myGroups.size)
                                         FirebaseRepository.saveGroup(updated, groupId)
                                     }
                                 },
@@ -143,7 +146,6 @@ fun GroupsScreen() {
         }
 
         // ── Group creation dialog ─────────────────────────────────────────
-        var pendingGroup by remember { mutableStateOf<GroupEntry?>(null) }
 
         if (showCreationDialog) {
             GroupCreationDialog(
@@ -163,17 +165,6 @@ fun GroupsScreen() {
                 }
             )
         }
-
-        LaunchedEffect(pendingGroup) {
-            val group = pendingGroup ?: return@LaunchedEffect
-            try {
-                FirebaseRepository.saveGroup(group)
-                Log.d("GroupsScreen", "saveGroup SUCCESS")
-            } catch (e: Exception) {
-                Log.e("GroupsScreen", "saveGroup FAILED: ${e.message}", e)
-            }
-            pendingGroup = null
-        }
     }
 }
 
@@ -191,12 +182,15 @@ private fun GroupCreationDialog(
         title = { Text("New Group") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                //group name input field
                 OutlinedTextField(
                     value = groupTitle,
                     onValueChange = { groupTitle = it },
                     label = { Text("Group Name") },
                     singleLine = true
                 )
+
+                //creator role selector
                 Text("Your role as creator:", style = MaterialTheme.typography.bodyMedium)
                 listOf(
                     GroupRole.SUPER_ADMIN to "Super Admin — cannot be removed, full control",

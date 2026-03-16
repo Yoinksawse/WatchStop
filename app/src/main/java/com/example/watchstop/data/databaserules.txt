@@ -1,0 +1,63 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid",
+        "groups": {
+          "$groupId": {
+            ".read": "$uid === auth.uid",
+            ".write": "auth != null"
+          }
+        }
+      }
+    },
+    "uids": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "$uid === auth.uid"
+      }
+    },
+    "usernames": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "geoAlarms": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid"
+      }
+    },
+    "geofences": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid"
+      }
+    },
+    "savedRoutes": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid"
+      }
+    },
+    "groups": {
+      "$groupId": {
+        ".read": "auth != null && data.child('memberIds').child(auth.uid).exists()",
+        ".write": "auth != null && (
+          data.child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' ||
+          data.child('memberRoles').child(auth.uid).val() === 'ADMIN' ||
+          !data.exists()
+        )"
+      }
+    },
+    "groupLocations": {
+      "$groupId": {
+        ".read": "auth != null && root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists()",
+        ".write": "auth != null && root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN'",
+        "$uid": {
+          ".write": "$uid === auth.uid && root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists()"
+        }
+      }
+    }
+  }
+}

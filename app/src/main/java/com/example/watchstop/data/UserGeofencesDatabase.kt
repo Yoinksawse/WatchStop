@@ -1,5 +1,6 @@
 package com.example.watchstop.data
 
+import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.mutableStateListOf
 import com.example.watchstop.model.GeofenceArea
@@ -8,21 +9,25 @@ import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 object UserGeofencesDatabase {
     private val database = FirebaseDatabase.getInstance("https://watchstopdb-default-rtdb.firebaseio.com")
     private val geofences = mutableStateListOf<GeofenceArea>()
 
-    fun addGeofence(geofence: GeofenceArea) {
+    fun addGeofence(geofence: GeofenceArea, context: Context? = null) {
         if (!geofences.any { it.id == geofence.id }) {
             geofences.add(geofence)
             updateGeofencesToFirebaseDB()
+            context?.let { saveGeofencesToCache(it) }
         }
     }
 
-    fun removeGeofence(geofence: GeofenceArea) {
+    fun removeGeofence(geofence: GeofenceArea, context: Context? = null) {
         if (geofences.removeIf { it.id == geofence.id }) {
             updateGeofencesToFirebaseDB()
+            context?.let { saveGeofencesToCache(it) }
         }
     }
 
@@ -35,6 +40,29 @@ object UserGeofencesDatabase {
         return geofences.find { it.id == geofenceId }
     }
 
+    fun saveGeofencesToCache(context: Context) {
+        try {
+            val sharedPrefs = context.getSharedPreferences("UserGeofencesCache", Context.MODE_PRIVATE)
+            val json = Json.encodeToString(geofences.toList())
+            sharedPrefs.edit().putString("cached_geofences", json).apply()
+        } catch (e: Exception) {
+            Log.e("UserGeofencesDatabase", "Error caching geofences", e)
+        }
+    }
+
+    fun loadGeofencesFromCache(context: Context) {
+        try {
+            val sharedPrefs = context.getSharedPreferences("UserGeofencesCache", Context.MODE_PRIVATE)
+            val json = sharedPrefs.getString("cached_geofences", null)
+            if (json != null) {
+                val cachedList = Json.decodeFromString<List<GeofenceArea>>(json)
+                geofences.clear()
+                geofences.addAll(cachedList)
+            }
+        } catch (e: Exception) {
+            Log.e("UserGeofencesDatabase", "Error loading cached geofences", e)
+        }
+    }
 
     /**
      * Fetches geofences from Firebase for the current user.

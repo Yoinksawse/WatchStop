@@ -3,14 +3,13 @@ package com.example.watchstop.data
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.example.watchstop.service.FirebaseRepository
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-const val GUEST_USERNAME = "Guest"
+const val GUEST_USERNAME = "User"
 const val GUEST_EMAIL = "a@b.c"
 const val DEFAULT_PFP = "defaultpfp"
 const val INITIAL_DARKMODE = true
@@ -56,6 +55,7 @@ object UserProfileObject {
 
     private fun resetToGuest() {
         userName = GUEST_USERNAME
+        email = GUEST_EMAIL
         userPfpReference = DEFAULT_PFP
         isLoggedIn = false
         darkmode = true
@@ -69,14 +69,11 @@ object UserProfileObject {
             FirebaseRepository.observeUserProfile(uid).collect { profile ->
                 if (profile != null) {
                     userName = profile.userName
+                    email = profile.email
                     userPfpReference = profile.userPfpReference
                     darkmode = profile.darkmode
                     // isLoggedIn is true ONLY if the account is not named "Guest"
                     isLoggedIn = !userName.equals(GUEST_USERNAME, ignoreCase = true)
-                } else {
-                    // If no profile found, treat as Guest until one is created
-                    userName = GUEST_USERNAME
-                    isLoggedIn = false
                 }
             }
         }
@@ -102,6 +99,7 @@ object UserProfileObject {
             FirebaseRepository.saveUserProfile(
                 data = UserProfileData(
                     userName = userName,
+                    email = email,
                     userPfpReference = userPfpReference,
                     darkmode = darkmode
                 )
@@ -113,16 +111,25 @@ object UserProfileObject {
 
     suspend fun signIn(email: String, password: String) {
         val firebaseUser = FirebaseRepository.signIn(email, password)
-        this.email = firebaseUser.email.let{email.substringBefore("@")}
-        this.userName = firebaseUser.email.let{email.substringBefore("@")}
+        this.email = firebaseUser.email ?: email
+        
+        // UPLOAD THE EXISTING GEOALARMS FIRST
+        // We push local guest data to the newly signed-in account immediately
+        GeoAlarmsDatabase.updateAlarmsToFirebaseDB()
+        UserGeofencesDatabase.updateGeofencesToFirebaseDB()
+        
         this.isLoggedIn = true
     }
 
     suspend fun signUp(email: String, password: String, userName: String) {
         FirebaseRepository.signUp(email, password, userName)
-        signIn(email, password) //DO NOT REMOVE
-
-        this.userName = userName.ifEmpty { email.substringBefore("@") }
+        
+        // UPLOAD THE EXISTING GEOALARMS FIRST
+        GeoAlarmsDatabase.updateAlarmsToFirebaseDB()
+        UserGeofencesDatabase.updateGeofencesToFirebaseDB()
+        
+        this.email = email
+        this.userName = userName
         this.userPfpReference = DEFAULT_PFP
         this.darkmode = INITIAL_DARKMODE
         this.isLoggedIn = true

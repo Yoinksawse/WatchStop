@@ -28,8 +28,10 @@ import androidx.compose.ui.unit.sp
 import com.example.watchstop.activities.MapActivity
 import com.example.watchstop.data.GeoAlarmsDatabase
 import com.example.watchstop.data.UserGeofencesDatabase
+import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.model.GeoAlarm
+import com.example.watchstop.data.FirebaseRepository
 import com.example.watchstop.view.GeoAlarmCard
 import com.example.watchstop.view.ui.theme.ElectricYellow
 import com.example.watchstop.view.ui.theme.SlateGrey
@@ -49,6 +51,32 @@ fun GeoAlarmsScreen(
 ) {
     var showEditDialog by remember { mutableStateOf(false) }
     var alarmToEdit by remember { mutableStateOf<GeoAlarm?>(null) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    // Initialize data
+    LaunchedEffect(UserProfileObject.isLoggedIn) {
+        if (UserProfileObject.isLoggedIn) {
+            GeoAlarmsDatabase.fetchAlarmsFromFirebaseDB()
+        } else {
+            GeoAlarmsDatabase.loadAlarmsFromCache(context)
+        }
+    }
+    
+    // Also listen for real-time updates if logged in
+    if (UserProfileObject.isLoggedIn) {
+        val uid = UserProfileObject.uid
+        if (uid != null) {
+            LaunchedEffect(uid) {
+                FirebaseRepository.observeGeoAlarms(uid).collect { firebaseAlarms ->
+                    GeoAlarmsDatabase.alarms.clear()
+                    GeoAlarmsDatabase.alarms.addAll(firebaseAlarms)
+                    // Update cache even when using Firebase
+                    GeoAlarmsDatabase.saveAlarmsToCache(context)
+                }
+            }
+        }
+    }
 
     WatchStopTheme(darkTheme = darkmode) {
         Scaffold(
@@ -98,7 +126,14 @@ fun GeoAlarmsScreen(
                                     showEditDialog = true
                                 },
                                 onDelete = {
-                                    GeoAlarmsDatabase.removeAlarm(alarm)
+                                    GeoAlarmsDatabase.removeAlarm(alarm, context)
+                                    if (UserProfileObject.isLoggedIn) {
+                                        UserProfileObject.uid?.let { uid ->
+                                            scope.launch {
+                                                FirebaseRepository.deleteGeoAlarm(uid, alarm.id)
+                                            }
+                                        }
+                                    }
                                 }
                             )
                         }
@@ -113,10 +148,19 @@ fun GeoAlarmsScreen(
                 onDismiss = { showEditDialog = false },
                 onSave = { updatedAlarm ->
                     if (GeoAlarmsDatabase.alarms.any { it.id == updatedAlarm.id }) {
-                        GeoAlarmsDatabase.updateAlarm(updatedAlarm)
+                        GeoAlarmsDatabase.updateAlarm(updatedAlarm, context)
                     } else {
-                        GeoAlarmsDatabase.addAlarm(updatedAlarm)
+                        GeoAlarmsDatabase.addAlarm(updatedAlarm, context)
                     }
+                    
+                    if (UserProfileObject.isLoggedIn) {
+                        UserProfileObject.uid?.let { uid ->
+                            scope.launch {
+                                FirebaseRepository.saveGeoAlarm(uid, updatedAlarm)
+                            }
+                        }
+                    }
+                    
                     showEditDialog = false
                 },
                 onRequestMap = onRequestMap

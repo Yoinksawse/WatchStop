@@ -1,13 +1,11 @@
-package com.example.watchstop.service
+package com.example.watchstop.data
 
+import android.content.Context
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
-import com.example.watchstop.data.DEFAULT_PFP
-import com.example.watchstop.data.GUEST_USERNAME
-import com.example.watchstop.data.UserProfileData
-import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.model.GeoAlarm
+import com.example.watchstop.model.GeofenceArea
 import com.example.watchstop.model.GroupEntry
 import com.example.watchstop.model.GroupRole
 import com.example.watchstop.model.TripStatus
@@ -23,13 +21,17 @@ import kotlinx.coroutines.tasks.await
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
+import android.widget.Toast
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.LocalTime
+
 
 object FirebaseRepository {
 
     private val auth: FirebaseAuth get() = FirebaseAuth.getInstance()
     private val db: DatabaseReference get() = Firebase.database.reference
 
-    val currentUser: FirebaseUser? get() = auth.currentUser
     val currentUid: String? get() = auth.currentUser?.uid
 
     private fun isGuest(): Boolean = !UserProfileObject.isLoggedIn
@@ -52,7 +54,12 @@ object FirebaseRepository {
         db.child("usernames").child(userName.lowercase()).setValue(email)
         db.child("uids").child(user.uid).setValue(userName)
         db.child("users").child(user.uid).setValue(
-            mapOf("userName" to userName, "userPfpReference" to DEFAULT_PFP, "darkmode" to true)
+            mapOf(
+                "userName" to userName,
+                "email" to email,
+                "userPfpReference" to DEFAULT_PFP,
+                "darkmode" to true
+            )
         )
         return user
     }
@@ -66,13 +73,13 @@ object FirebaseRepository {
 
     suspend fun saveUserProfile(data: UserProfileData) {
         val uid = ensureAuth()
-        db.child("users").child(uid).setValue(
-            mapOf(
-                "userName" to data.userName,
-                "userPfpReference" to data.userPfpReference,
-                "darkmode" to data.darkmode
-            )
-        ).await()
+        val updates = mapOf(
+            "userName" to data.userName,
+            "email" to data.email,
+            "userPfpReference" to data.userPfpReference,
+            "darkmode" to data.darkmode
+        )
+        db.child("users").child(uid).updateChildren(updates).await()
     }
 
     fun observeUserProfile(uid: String): Flow<UserProfileData?> = callbackFlow {
@@ -120,18 +127,42 @@ object FirebaseRepository {
                 .mapValues { it.value.associateWith { true } }
         )
 
-        db.child("groups").child(id).setValue(payload)
-            .addOnSuccessListener { Log.d("FirebaseRepository", "saveGroup SUCCESS id=$id") }
-            .addOnFailureListener { Log.e("FirebaseRepository", "saveGroup FAILED: ${it.message}") }
-            .await()
+        db.child("groups").child(id).setValue(payload).await()
+
+        // index this group for every member
+        val updates = mutableMapOf<String, Any>()
+        for (memberUid in group.groupMemberNames) {
+            updates["users/$memberUid/groups/$id"] = true
+        }
+
+        db.updateChildren(updates).await()
+
+        Log.d("FirebaseRepository", "saveGroup SUCCESS id=$id")
 
         return id
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     suspend fun deleteGroup(groupId: String) {
         ensureAuth()
-        db.child("groups").child(groupId).removeValue().await()
-        db.child("groupLocations").child(groupId).removeValue().await()
+
+        // Read member list while group still exists
+        val snap = db.child("groups").child(groupId).get().await()
+        val memberIds = snap.child("memberIds").children.mapNotNull { it.key }
+
+        // Phase 1: delete group and groupLocations while memberRoles still readable
+        db.updateChildren(mapOf<String, Any?>(
+            "groups/$groupId" to null,
+            "groupLocations/$groupId" to null
+        )).await()
+
+        // Phase 2: clean up user index entries (group already gone, just needs auth != null)
+        if (memberIds.isNotEmpty()) {
+            val userIndexCleanup = memberIds.associate { uid ->
+                "users/$uid/groups/$groupId" to null
+            }
+            db.updateChildren(userIndexCleanup).await()
+        }
     }
 
     /**
@@ -142,29 +173,46 @@ object FirebaseRepository {
     fun observeMyGroups(uid: String): Flow<List<Pair<String, GroupEntry>>> = callbackFlow {
         if (uid.isEmpty()) {
             trySend(emptyList())
-            close()
+            awaitClose {}
             return@callbackFlow
         }
-        val ref = db.child("groups")
-        val listener = ref.addValueEventListener(object : ValueEventListener {
+
+        val indexRef = db.child("users").child(uid).child("groups")
+
+
+        val listener = indexRef.addValueEventListener(object : ValueEventListener {
             @RequiresApi(Build.VERSION_CODES.O)
             override fun onDataChange(snapshot: DataSnapshot) {
-                val result = snapshot.children.mapNotNull { child ->
-                    val id = child.key ?: return@mapNotNull null
-                    val entry = child.toGroupEntry() ?: return@mapNotNull null
-                    if (entry.groupMemberNames.contains(uid)) id to entry else null
+                Log.d("FIREBASE", "Children count: ${snapshot.childrenCount}")
+                val groupIds = snapshot.children.mapNotNull { it.key }
+
+                if (groupIds.isEmpty()) {
+                    trySend(emptyList())
+                    return
                 }
-                trySend(result)
+
+                val groups = mutableListOf<Pair<String, GroupEntry>>()
+
+                groupIds.forEach { id ->
+                    db.child("groups").child(id).get()
+                        .addOnSuccessListener { snap ->
+                            val entry = snap.toGroupEntry()
+                            if (entry != null) {
+                                groups.add(id to entry)
+                                trySend(groups.toList())
+                            }
+                        }
+                }
             }
+
             override fun onCancelled(error: DatabaseError) {
-                // Log but don't crash — recovers when auth resolves
                 Log.w("FirebaseRepository", "observeMyGroups cancelled: ${error.message}")
                 trySend(emptyList())
             }
         })
-        awaitClose { ref.removeEventListener(listener) }
-    }
 
+        awaitClose { indexRef.removeEventListener(listener) }
+    }
     // ── Group Actions ─────────────────────────────────────────────────────
 
     /** Toggle location sharing for a UID. Enforces canToggleSharing. */
@@ -345,13 +393,20 @@ object FirebaseRepository {
     }
 
     suspend fun saveGeoAlarm(uid: String, alarm: GeoAlarm) {
-        ensureAuth()
-        db.child("geoAlarms").child(uid).child(alarm.id).setValue(alarm.toMap()).await()
+        val alarmData = alarm.toMap()
+        val updates = mapOf(
+            "geoAlarms/$uid/${alarm.id}" to alarmData,
+            "users/$uid/geoAlarms/${alarm.id}" to alarmData
+        )
+        db.updateChildren(updates).await()
     }
 
     suspend fun deleteGeoAlarm(uid: String, alarmId: String) {
-        ensureAuth()
-        db.child("geoAlarms").child(uid).child(alarmId).removeValue().await()
+        val updates = mapOf(
+            "geoAlarms/$uid/$alarmId" to null,
+            "users/$uid/geoAlarms/$alarmId" to null
+        )
+        db.updateChildren(updates).await()
     }
 
     // ── User Geofences ────────────────────────────────────────────────────
@@ -371,9 +426,69 @@ object FirebaseRepository {
         awaitClose { ref.removeEventListener(listener) }
     }
 
+    suspend fun saveGeofence(uid: String, geofence: GeofenceArea) {
+        val data = mapOf(
+            "id" to geofence.id,
+            "name" to geofence.name,
+            "center" to mapOf("lat" to geofence.center.latitude, "lng" to geofence.center.longitude),
+            "typeId" to geofence.typeId,
+            "radius" to geofence.radius,
+            "points" to geofence.points.map { mapOf("lat" to it.latitude, "lng" to it.longitude) },
+            "geoAlarmId" to geofence.geoAlarmId
+        )
+        db.child("geofences").child(uid).child(geofence.id).setValue(data).await()
+    }
+
     suspend fun saveUserGeofences(uid: String, data: Any) {
         ensureAuth()
         db.child("geofences").child(uid).setValue(data).await()
+    }
+
+    /**
+     * Saves geofence to Firebase for cloud sync.
+     */
+    fun saveGeofenceToFirebase(
+        database: DatabaseReference,
+        geofence: GeofenceArea,
+        context: Context
+    ) {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        if (uid == null) {
+            Toast.makeText(context, "Log in to save Geofence to Cloud", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val key = geofence.id
+
+        database.child("geofences")
+            .child(uid)
+            .child(key)
+            .setValue(geofence)
+            .addOnSuccessListener {
+                Toast.makeText(context, "Geofence Saved to Cloud", Toast.LENGTH_SHORT).show()
+            }
+            .addOnFailureListener {
+                Toast.makeText(context, "Failed to save geofence", Toast.LENGTH_SHORT).show()
+                Log.e("FirebaseRepository", "Geofence upload failed", it)
+            }    }
+
+    /**
+     * Removes geofence from Firebase.
+     */
+    fun deleteGeofenceFromFirebase(
+        database: DatabaseReference,
+        userId: String,
+        geofenceName: String,
+        context: Context
+    ) {
+        if (userId.isEmpty()) {
+            Toast.makeText(context, "Fatal error occurred. this toast should never be shown", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val key = geofenceName.filter { it.isLetterOrDigit() }
+        database.child(userId).child(key).removeValue()
+
+        Toast.makeText(context, "Geofence Deleted from Cloud", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -385,9 +500,10 @@ data class LatLngSnapshot(val lat: Double, val lng: Double)
 
 private fun DataSnapshot.toUserProfileData(): UserProfileData? {
     val userName = child("userName").getValue(String::class.java) ?: return null
+    val email = child("email").getValue(String::class.java) ?: ""
     val pfp = child("userPfpReference").getValue(String::class.java) ?: DEFAULT_PFP
     val dark = child("darkmode").getValue(Boolean::class.java) ?: true
-    return UserProfileData(userName = userName, userPfpReference = pfp, darkmode = dark)
+    return UserProfileData(userName = userName, email = email, userPfpReference = pfp, darkmode = dark)
 }
 
 @RequiresApi(Build.VERSION_CODES.O)
@@ -462,12 +578,12 @@ private fun DataSnapshot.toGeoAlarm(): GeoAlarm? {
         description = child("description").getValue(String::class.java) ?: "",
         geofenceId = child("geofenceId").getValue(String::class.java),
         specificDate = child("specificDate").getValue(String::class.java)
-            ?.let { java.time.LocalDate.parse(it) },
+            ?.let { LocalDate.parse(it) },
         dayOfWeek = child("dayOfWeek").getValue(String::class.java)
-            ?.let { java.time.DayOfWeek.valueOf(it) },
+            ?.let { DayOfWeek.valueOf(it) },
         startTime = child("startTime").getValue(String::class.java)
-            ?.let { java.time.LocalTime.parse(it) },
+            ?.let { LocalTime.parse(it) },
         endTime = child("endTime").getValue(String::class.java)
-            ?.let { java.time.LocalTime.parse(it) }
+            ?.let { LocalTime.parse(it) }
     )
 }

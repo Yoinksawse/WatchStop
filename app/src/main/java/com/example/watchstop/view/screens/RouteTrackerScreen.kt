@@ -4,19 +4,27 @@ package com.example.watchstop.view.screens
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Build
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.key
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,28 +41,46 @@ import com.example.watchstop.model.ColouredSegment
 import com.example.watchstop.model.PathPoint
 import com.example.watchstop.model.SegmentData
 import com.example.watchstop.view.InfoDisplayColumn
+import com.example.watchstop.view.IntervalSettingsDialog
 import com.example.watchstop.view.ui.theme.ElectricYellow
 import com.example.watchstop.view.ui.theme.NeonLime
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.maps.model.*
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 import com.google.maps.android.compose.*
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 
+data class SavedRoute(
+    val id: String = "",
+    val timestamp: Long = 0L,
+    val distanceMeters: Double = 0.0,
+    val durationSeconds: Long = 0L,
+    val points: List<PathPoint> = emptyList()
+)
 
 @SuppressLint("MissingPermission")
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun RouteTrackerScreen() {
     val context = LocalContext.current
+    val auth = remember { FirebaseAuth.getInstance() }
+    val database = remember { FirebaseDatabase.getInstance().getReference("savedRoutes") }
 
     //settings
     var isTracking by remember { mutableStateOf(false) }
     var recordingInterval by remember { mutableFloatStateOf(10f) }
     var showSettings by remember { mutableStateOf(false) }
+    var showHistory by remember { mutableStateOf(false) }
+    var savedRoutesList = remember { mutableStateListOf<SavedRoute>() }
+    var isRouteSaved by remember { mutableStateOf(false) }
 
     //route info
     val pathPoints = remember { mutableStateListOf<PathPoint>() }
@@ -158,6 +184,22 @@ fun RouteTrackerScreen() {
         }
     }
 
+    // Helper: Load from Firebase
+    LaunchedEffect(showHistory) {
+        if (showHistory) {
+            val userId = auth.currentUser?.uid ?: return@LaunchedEffect
+            database.child(userId).addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    savedRoutesList.clear()
+                    snapshot.children.forEach { child ->
+                        child.getValue(SavedRoute::class.java)?.let { savedRoutesList.add(it) }
+                    }
+                }
+                override fun onCancelled(error: DatabaseError) {}
+            })
+        }
+    }
+
     //get segments from path points
     val segments = remember(pathPoints.size) {
         if (pathPoints.size < 2)
@@ -238,6 +280,14 @@ fun RouteTrackerScreen() {
         else null
 
     val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+
+    val toolbarAlignment = remember {
+        mutableStateOf(
+            if (pathPoints.isNotEmpty() && !isTracking) Alignment.TopEnd
+            else Alignment.CenterEnd
+        )
+    }
+    val toolbarPadding = if (toolbarAlignment == Alignment.TopEnd) 64.dp else 0.dp
     //END END END END END END END END END END END BEGIN LIFECYCLE UPDATES
 
     //BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN ui components
@@ -338,38 +388,87 @@ fun RouteTrackerScreen() {
             }
         }
 
-        //COLUMN CONTROL PANEL
         Column(
             modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(16.dp)
+                .align(toolbarAlignment.value)
+                .padding(top = toolbarPadding, end = 16.dp)
                 .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(24.dp))
                 .padding(8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            //settings button
+            //1. settings button
             IconButton(onClick = { showSettings = true }) {
+                Icon(Icons.Default.Settings, tint = Color.White, contentDescription = "Settings")
+            }
+
+            //2. pause/track button
+            IconButton(
+                onClick = {
+                    if (isTracking) {
+                        //capture final point
+                        fusedLocationClient
+                            .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                            .addOnSuccessListener { loc ->
+                                loc?.let {
+                                    val newPoint = PathPoint(
+                                        latitude = it.latitude,
+                                        longitude = it.longitude,
+                                        speed = it.speed,
+                                        timestamp = System.currentTimeMillis()
+                                    )
+                                    if (pathPoints.isNotEmpty()) {
+                                        val last = pathPoints.last()
+                                        val results = FloatArray(1)
+                                        Location.distanceBetween(
+                                            last.latitude, last.longitude,
+                                            it.latitude, it.longitude,
+                                            results
+                                        )
+                                        if (results[0] >= 10f) {
+                                            val timeChangeSecs = (newPoint.timestamp - last.timestamp) / 1000.0f
+                                            val calculatedSpeed =
+                                                if (timeChangeSecs > 0) results[0] / timeChangeSecs else 0f
+                                            totalDistanceMeters += results[0]
+                                            pathPoints.add(newPoint.copy(speed = calculatedSpeed))
+                                        }
+                                    } else {
+                                        pathPoints.add(newPoint)
+                                    }
+                                }
+                                isTracking = false
+                            }
+                    } else {
+                        isTracking = true
+                    }
+                }
+            ){
                 Icon(
-                    imageVector = Icons.Default.Settings,
-                    tint = Color.White,
-                    contentDescription = "Interval Settings"
+                    imageVector = if (isTracking) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    tint = if (isTracking) NeonLime else Color.White,
+                    contentDescription = "Toggle"
                 )
             }
 
-            //play / stop
-            IconButton(onClick = { isTracking = !isTracking }) {
-                Icon(
-                    imageVector =
-                        if (isTracking) Icons.Default.Pause
-                        else Icons.Default.PlayArrow,
-                    contentDescription = "Toggle Tracking",
-                    tint =
-                        if (isTracking) NeonLime
-                        else Color.White
-                )
+            //3. save button (Only visible if not tracking and route exists)
+            AnimatedVisibility(visible = !isTracking && pathPoints.isNotEmpty() && UserProfileObject.isLoggedIn) {
+                IconButton(onClick = {
+                    if (!isRouteSaved) {
+                        saveRoute(
+                            database = database,
+                            userId = auth.currentUser?.uid ?: "",
+                            distance = totalDistanceMeters,
+                            duration = duration,
+                            points = pathPoints.toList(),
+                            context = context
+                        )
+                        isRouteSaved = true
+                    }
+                }) {
+                    Icon(Icons.Default.Check, tint = NeonLime, contentDescription = "Save")
+                }
             }
 
-            //clear route
+            //4. clear route button
             IconButton(
                 onClick = {
                     pathPoints.clear()
@@ -385,6 +484,17 @@ fun RouteTrackerScreen() {
                     contentDescription = "Clear Path",
                     tint = Color.White
                 )
+            }
+
+            //5. saved routes button
+            if (UserProfileObject.isLoggedIn) {
+                IconButton(onClick = { showHistory = true }) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.List,
+                        tint = Color.White,
+                        contentDescription = "History"
+                    )
+                }
             }
         }
 
@@ -516,6 +626,66 @@ fun RouteTrackerScreen() {
             }
         }
 
+        if (showHistory) {
+            AlertDialog(
+                onDismissRequest = { showHistory = false },
+                title = { Text("Saved Routes") },
+                text = {
+                    Box(modifier = Modifier.height(300.dp)) {
+                        if (savedRoutesList.isEmpty()) {
+                            Text("No routes saved yet.", modifier = Modifier.align(Alignment.Center))
+                        } else {
+                            LazyColumn {
+                                items(savedRoutesList.reversed()) { route -> // Use reversed list directly
+                                    ListItem(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                // LOAD LOGIC
+                                                isTracking = false
+                                                pathPoints.clear()
+                                                pathPoints.addAll(route.points)
+                                                totalDistanceMeters = route.distanceMeters
+                                                duration = route.durationSeconds
+                                                startTime = 0L // Mark as static load
+                                                isRouteSaved = true // Prevents re-saving the same route
+
+                                                // Move camera to start of route
+                                                if (route.points.isNotEmpty()) {
+                                                    cameraPositionState.position = CameraPosition.fromLatLngZoom(
+                                                        LatLng(route.points[0].latitude, route.points[0].longitude),
+                                                        15f
+                                                    )
+                                                }
+                                                showHistory = false
+                                            },
+                                        headlineContent = {
+                                            Text(SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault()).format(Date(route.timestamp)))
+                                        },
+                                        supportingContent = {
+                                            Text("${"%.2f".format(route.distanceMeters / 1000.0)} km | ${formatDuration(route.durationSeconds)}")
+                                        },
+                                        trailingContent = {
+                                            IconButton(onClick = {
+                                                deleteRoute(database, auth.currentUser?.uid ?: "", route.id)
+                                                savedRoutesList.remove(route) // Optimistic UI update
+                                            }) {
+                                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red.copy(alpha = 0.7f))
+                                            }
+                                        }
+                                    )
+                                    HorizontalDivider()
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showHistory = false }) { Text("Close") }
+                }
+            )
+        }
+
         if (showSettings) {
             IntervalSettingsDialog(
                 currentInterval = recordingInterval,
@@ -528,6 +698,7 @@ fun RouteTrackerScreen() {
 }
 
 //BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN util
+
 fun formatDuration(seconds: Long): String {
     val hours = TimeUnit.SECONDS.toHours(seconds)
     val minutes = TimeUnit.SECONDS.toMinutes(seconds) % 60
@@ -627,4 +798,44 @@ fun calcPinPosInfo(points: List<PathPoint>, fraction: Float): Pair<LatLng, Int> 
     return LatLng(lat, lng) to nearestIndex
 }
 
+/**
+ * Handles the Firebase push logic outside of the UI tree.
+ */
+private fun saveRoute(
+    database: com.google.firebase.database.DatabaseReference,
+    userId: String,
+    distance: Double,
+    duration: Long,
+    points: List<PathPoint>,
+    context: Context
+) {
+    if (userId.isEmpty()) {
+        Toast.makeText(context, "Log in to save route", Toast.LENGTH_SHORT).show()
+        return
+    }
+
+    val routeId = database.child(userId).push().key ?: return
+    val newRoute = SavedRoute(
+        id = routeId,
+        timestamp = System.currentTimeMillis(),
+        distanceMeters = distance,
+        durationSeconds = duration,
+        points = points
+    )
+    database.child(userId).child(routeId).setValue(newRoute)
+
+    Toast.makeText(context, "Route saved to database", Toast.LENGTH_SHORT).show()
+}
+
+/**
+ * Removes a specific route from the database.
+ */
+private fun deleteRoute(
+    database: com.google.firebase.database.DatabaseReference,
+    userId: String,
+    routeId: String
+) {
+    if (userId.isEmpty() || routeId.isEmpty()) return
+    database.child(userId).child(routeId).removeValue()
+}
 //END END END END END END END END END END END UTIL

@@ -13,7 +13,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import com.example.watchstop.activities.MainActivity
-import com.example.watchstop.data.UserProfileObject
+import com.example.watchstop.data.FirebaseRepository
 import com.example.watchstop.model.GeoAlarm
 import com.example.watchstop.model.GeofenceArea
 import com.google.android.gms.location.*

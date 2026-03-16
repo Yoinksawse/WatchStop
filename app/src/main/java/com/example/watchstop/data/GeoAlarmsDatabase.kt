@@ -1,5 +1,6 @@
 package com.example.watchstop.data
 
+import android.content.Context
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
@@ -9,6 +10,8 @@ import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -16,22 +19,49 @@ object GeoAlarmsDatabase {
     private val database = FirebaseDatabase.getInstance("https://watchstopdb-default-rtdb.firebaseio.com")
     val alarms = mutableStateListOf<GeoAlarm>()
 
-    fun addAlarm(alarm: GeoAlarm) {
+    fun addAlarm(alarm: GeoAlarm, context: Context? = null) {
         alarms.add(alarm)
         updateAlarmsToFirebaseDB()
+        context?.let { saveAlarmsToCache(it) }
     }
 
-    fun removeAlarm(alarm: GeoAlarm) {
+    fun removeAlarm(alarm: GeoAlarm, context: Context? = null) {
         if (alarms.removeIf { it.id == alarm.id }) {
             updateAlarmsToFirebaseDB()
+            context?.let { saveAlarmsToCache(it) }
         }
     }
 
-    fun updateAlarm(updatedAlarm: GeoAlarm) {
+    fun updateAlarm(updatedAlarm: GeoAlarm, context: Context? = null) {
         val index = alarms.indexOfFirst { it.id == updatedAlarm.id }
         if (index != -1) {
             alarms[index] = updatedAlarm
             updateAlarmsToFirebaseDB()
+            context?.let { saveAlarmsToCache(it) }
+        }
+    }
+
+    fun saveAlarmsToCache(context: Context) {
+        try {
+            val sharedPrefs = context.getSharedPreferences("GeoAlarmsCache", Context.MODE_PRIVATE)
+            val json = Json.encodeToString(alarms.toList())
+            sharedPrefs.edit().putString("cached_alarms", json).apply()
+        } catch (e: Exception) {
+            Log.e("GeoAlarmsDatabase", "Error caching alarms", e)
+        }
+    }
+
+    fun loadAlarmsFromCache(context: Context) {
+        try {
+            val sharedPrefs = context.getSharedPreferences("GeoAlarmsCache", Context.MODE_PRIVATE)
+            val json = sharedPrefs.getString("cached_alarms", null)
+            if (json != null) {
+                val cachedList = Json.decodeFromString<List<GeoAlarm>>(json)
+                alarms.clear()
+                alarms.addAll(cachedList)
+            }
+        } catch (e: Exception) {
+            Log.e("GeoAlarmsDatabase", "Error loading cached alarms", e)
         }
     }
 

@@ -9,7 +9,7 @@ enum class GroupRole(val displayName: String) {
 }
 
 enum class TripStatus {
-    INACTIVE, EN_ROUTE, ARRIVED
+    INACTIVE, TRAVELLING, ARRIVED
 }
 
 data class GroupEntry(
