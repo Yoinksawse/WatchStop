@@ -312,6 +312,27 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                     }
                                 }
                                 if (!isSelf && currentIsAdmin) {
+                                    // Show remove button for all non-SuperAdmin members (including Admins)
+                                    if (!isTargetSuperAdmin) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                // FIX: record the explicit removal so Save passes
+                                                // exactly these UIDs to updateGroupMetadata.
+                                                explicitlyRemovedMembers.value += member
+                                                memberNames.remove(member)
+                                                memberRoles.remove(member)
+                                                sharingEnabled.remove(member)
+                                                canToggle.remove(member)
+                                            },
+                                            modifier = Modifier.height(32.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = BorderStroke(1.dp, destructiveColor.copy(alpha = 0.5f))
+                                        ) {
+                                            Text("Remove", fontSize = 11.sp, color = destructiveColor)
+                                        }
+                                    }
+
+                                    // Promote button only for MEMBER when currentIsSuperAdmin
                                     if (role == GroupRole.MEMBER && currentIsSuperAdmin) {
                                         OutlinedButton(
                                             onClick = {
@@ -325,25 +346,6 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                             shape = RoundedCornerShape(8.dp)
                                         ) {
                                             Text("Promote", fontSize = 11.sp, color = accentColor)
-                                        }
-                                    }
-                                    if (!isTargetSuperAdmin) {
-                                        OutlinedButton(
-                                            onClick = {
-                                                // FIX: record the explicit removal so Save passes
-                                                // exactly these UIDs to updateGroupMetadata.
-                                                explicitlyRemovedMembers.value =
-                                                    explicitlyRemovedMembers.value + member
-                                                memberNames.remove(member)
-                                                memberRoles.remove(member)
-                                                sharingEnabled.remove(member)
-                                                canToggle.remove(member)
-                                            },
-                                            modifier = Modifier.height(32.dp),
-                                            shape = RoundedCornerShape(8.dp),
-                                            border = BorderStroke(1.dp, destructiveColor.copy(alpha = 0.5f))
-                                        ) {
-                                            Text("Remove", fontSize = 11.sp, color = destructiveColor)
                                         }
                                     }
                                 }

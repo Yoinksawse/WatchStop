@@ -19,9 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,14 +44,27 @@ fun GroupsScreen() {
     val appScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
     val context = LocalContext.current
 
+    var showFabMenu by remember { mutableStateOf(false) }
+
+    //refresh logic
+    var refreshTrigger by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while(true) {
+            kotlinx.coroutines.delay(3_000)//wait 3s
+            refreshTrigger++
+
+            if (refreshTrigger > 30) refreshTrigger = 0;
+        }
+    }
+
     val isLoggedIn = UserProfileObject.isLoggedIn
     val uid = if (isLoggedIn) UserProfileObject.uid ?: "" else ""
-    
-    val myGroups by remember(uid) {
+
+    val myGroups by remember(uid, refreshTrigger) {
         FirebaseRepository.observeMyGroups(uid)
     }.collectAsState(initial = emptyList())
 
-    val notifications by remember(uid) {
+    val notifications by remember(uid, refreshTrigger) {
         FirebaseRepository.observeAllNotifications(uid)
     }.collectAsState(initial = emptyList())
 
@@ -105,18 +116,38 @@ fun GroupsScreen() {
                 }
             },
             floatingActionButton = {
-                if (selectedTabIndex == 0) {
+                Box {
                     FloatingActionButton(
                         containerColor = if (darkmode) MaterialTheme.colorScheme.secondary
                         else MaterialTheme.colorScheme.primary,
                         contentColor = Color.White,
                         shape = RoundedCornerShape(16.dp),
-                        onClick = {
-                            if (UserProfileObject.isLoggedIn) showCreationDialog = true
-                            else showLoginPrompt = true
-                        }
+                        onClick = { showFabMenu = true }
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "Create group", modifier = Modifier.size(24.dp))
+                        Icon(Icons.Default.Menu, contentDescription = "Operations Menu", modifier = Modifier.size(24.dp))
+                    }
+
+                    DropdownMenu(
+                        expanded = showFabMenu,
+                        onDismissRequest = { showFabMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Refresh Groups") },
+                            onClick = {
+                                showFabMenu = false
+                                refreshTrigger++
+
+                                //TODO: refresh groups
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Create New Group") },
+                            onClick = {
+                                showFabMenu = false
+                                if (UserProfileObject.isLoggedIn) showCreationDialog = true
+                                else showLoginPrompt = true
+                            }
+                        )
                     }
                 }
             }

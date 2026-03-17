@@ -167,13 +167,12 @@ object FirebaseRepository {
         ensureAuth()
         val groupRef = db.child("groups").child(groupId)
 
+        // Build updates for the main group metadata
         val updates = mutableMapOf<String, Any?>(
             "title" to group.title,
             "description" to group.description,
             "eventDateTimeEpoch" to group.eventDateTime
                 .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-            "memberRoles" to group.memberRoles.mapValues { it.value.name },
-            "canToggleSharing" to group.canToggleSharing,
             "adminApplications" to group.adminApplications.associateWith { true },
             "adminApplicationVotes" to group.adminApplicationVotes
                 .mapValues { it.value.associateWith { true } },
@@ -181,7 +180,20 @@ object FirebaseRepository {
                 .mapValues { it.value.associateWith { true } }
         )
 
-        // Only remove members the admin explicitly kicked — never infer removals by diffing.
+        // Instead of updating the entire maps, update each child individually
+        // to avoid parent/child path conflicts
+
+        // Update memberRoles individually
+        group.memberRoles.forEach { (uid, role) ->
+            updates["memberRoles/$uid"] = role.name
+        }
+
+        // Update canToggleSharing individually
+        group.canToggleSharing.forEach { (uid, canToggle) ->
+            updates["canToggleSharing/$uid"] = canToggle
+        }
+
+        // Only remove members the admin explicitly kicked
         for (uid in explicitlyRemovedMembers) {
             updates["memberIds/$uid"] = null
             updates["memberRoles/$uid"] = null
@@ -330,6 +342,7 @@ object FirebaseRepository {
         Log.d("FirebaseRepository", "leaveGroup: $uid left group $groupId")
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     suspend fun getGroup(groupId: String): GroupEntry? {
         val snap = db.child("groups").child(groupId).get().await()
         return snap.toGroupEntry()
