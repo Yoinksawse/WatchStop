@@ -269,6 +269,24 @@ object FirebaseRepository {
     suspend fun deleteGroup(groupId: String) {
         ensureAuth()
 
+        //TODO: fixing
+        // Get all related data first
+        val groupSnap = db.child("groups").child(groupId).get().await()
+
+        // Clean up locations
+        db.child("groupLocations").child(groupId).removeValue().await()
+
+        // Clean up any geofences related to this group
+        val geofencesSnap = db.child("geofences").get().await()
+        geofencesSnap.children.forEach { userGeofences ->
+            userGeofences.children.forEach { geofence ->
+                if (geofence.child("groupId").getValue(String::class.java) == groupId) {
+                    geofence.ref.removeValue().await()
+                }
+            }
+        }
+        //TODO: fix END EXTRA
+
         val groupRef = db.child("groups").child(groupId)
 
         val snap = groupRef.get().await()
@@ -542,48 +560,91 @@ object FirebaseRepository {
     suspend fun voteForAdminApplication(groupId: String, applicantUid: String, voterUid: String) {
         ensureAuth()
         val groupRef = db.child("groups").child(groupId)
-
-        // Record vote — adminApplicationVotes/$applicantUid/$voterUid allows any member
-        groupRef.child("adminApplicationVotes").child(applicantUid)
-            .child(voterUid).setValue(true).await()
-
-        // Check if threshold met
         val snap = groupRef.get().await()
         val entry = snap.toGroupEntry() ?: return
-        val promoted = entry.voteForAdminApplication(applicantUid, voterUid)
-        if (promoted) {
-            val updates = mapOf<String, Any?>(
-                "memberRoles/$applicantUid" to GroupRole.ADMIN.name,
+
+        // 1. Increment vote count
+        val currentVotes = entry.adminApplicationVotes[applicantUid]?.size ?: 0
+        val voteUpdates = mapOf(
+            voterUid to true,
+            "count" to currentVotes + 1
+        )
+        groupRef.child("adminApplicationVotes").child(applicantUid).updateChildren(voteUpdates).await()
+
+        // 2. Re-evaluate threshold
+        val freshSnap = groupRef.get().await()
+        val totalMembers = freshSnap.child("memberCount").getValue(Int::class.java) ?: 1
+        val updatedVotes = freshSnap.child("adminApplicationVotes").child(applicantUid).child("count").getValue(Int::class.java) ?: 0
+
+        if (updatedVotes >= (totalMembers / 2)) {
+            val promoteUpdates = mapOf<String, Any?>(
+                "memberRoles/$applicantUid" to "ADMIN",
                 "canToggleSharing/$applicantUid" to true,
                 "adminApplications/$applicantUid" to null,
                 "adminApplicationVotes/$applicantUid" to null
             )
-            groupRef.updateChildren(updates).await()
+            groupRef.updateChildren(promoteUpdates).await()
         }
     }
 
     /** Cast a vote to remove an admin. Demotes if threshold met. SuperAdmin is protected. */
     @RequiresApi(Build.VERSION_CODES.O)
-    suspend fun voteToRemoveAdmin(groupId: String, targetUid: String, voterUid: String) {
+    suspend fun voteToRemoveAdmin(groupId: String, targetUid: String, voterUid: String): Boolean {
         ensureAuth()
         val groupRef = db.child("groups").child(groupId)
-
         val snap = groupRef.get().await()
-        val entry = snap.toGroupEntry() ?: return
-        if (entry.isSuperAdmin(targetUid))
-            throw IllegalStateException("Super-Admins cannot be removed.")
+        val entry = snap.toGroupEntry() ?: return false
 
-        groupRef.child("votesToRemoveAdmin").child(targetUid)
-            .child(voterUid).setValue(true).await()
+        if (entry.isSuperAdmin(targetUid)) throw IllegalStateException("Cannot vote to remove a Super Admin")
 
-        val updated = groupRef.get().await().toGroupEntry() ?: return
-        if (updated.voteCountToRemove(targetUid) >= updated.votesNeededToRemove(targetUid)) {
-            val updates = mapOf<String, Any?>(
+        if (entry.isSuperAdmin(voterUid)) {
+            // SuperAdmin demotes immediately
+            val updates = mapOf(
                 "memberRoles/$targetUid" to GroupRole.MEMBER.name,
                 "canToggleSharing/$targetUid" to false,
                 "votesToRemoveAdmin/$targetUid" to null
             )
             groupRef.updateChildren(updates).await()
+            Log.d("FirebaseRepository", "SuperAdmin demoted $targetUid")
+            return true // Demotion happened immediately
+        } else {
+            // Regular vote - add the vote and increment count
+            val voteRef = groupRef.child("votesToRemoveAdmin").child(targetUid)
+
+            // Get current vote count
+            val countSnapshot = voteRef.child("count").get().await()
+            val currentCount = countSnapshot.getValue(Int::class.java) ?: 0
+            val newCount = currentCount + 1
+
+            // Prepare updates
+            val updates = mapOf(
+                "$voterUid" to true,
+                "count" to newCount
+            )
+
+            // Update both the vote and the count
+            voteRef.updateChildren(updates).await()
+            Log.d("FirebaseRepository", "Vote cast by $voterUid to remove $targetUid. Count: $newCount")
+
+            // Check if threshold is now met
+            val totalMembers = entry.groupMemberNames.size
+            val needed = (totalMembers / 2) + 1
+
+            // If threshold met, DEMOTE AUTOMATICALLY
+            if (newCount >= needed) {
+                Log.d("FirebaseRepository", "Threshold met! Demoting $targetUid to MEMBER")
+
+                val demoteUpdates = mapOf(
+                    "memberRoles/$targetUid" to GroupRole.MEMBER.name,
+                    "canToggleSharing/$targetUid" to false,
+                    "votesToRemoveAdmin/$targetUid" to null
+                )
+                groupRef.updateChildren(demoteUpdates).await()
+                Log.d("FirebaseRepository", "Auto-demoted $targetUid after vote threshold met")
+                return true
+            }
+
+            return false
         }
     }
 
@@ -816,6 +877,7 @@ object FirebaseRepository {
     }
 }
 
+
 // ── Notification Item Sealed Class ───────────────────────────────────────────
 
 sealed class NotificationItem {
@@ -876,7 +938,13 @@ fun DataSnapshot.toGroupEntry(): GroupEntry? {
     }.toMutableMap()
 
     val removalVotes = child("votesToRemoveAdmin").children.associate { targetSnap ->
-        (targetSnap.key ?: "") to targetSnap.children.mapNotNull { it.key }.toMutableSet()
+        val targetUid = targetSnap.key ?: ""
+        // Get all voter UIDs (excluding the count field)
+        val voters = targetSnap.children
+            .filter { it.key != "count" }
+            .mapNotNull { it.key }
+            .toMutableSet()
+        targetUid to voters
     }.toMutableMap()
 
     return GroupEntry(

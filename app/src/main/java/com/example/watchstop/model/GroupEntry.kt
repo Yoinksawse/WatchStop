@@ -17,7 +17,7 @@ data class GroupEntry(
     var eventDateTime: LocalDateTime,
     var description: String,
     // All member keys are Firebase UIDs
-    val groupMemberNames: MutableList<String> = mutableListOf(),
+    var groupMemberNames: MutableList<String> = mutableListOf(),
     val pendingInvitations: MutableSet<String> = mutableSetOf(),
     val memberRoles: MutableMap<String, GroupRole> = mutableMapOf(),
     val locationSharingEnabled: MutableMap<String, Boolean> = mutableMapOf(),

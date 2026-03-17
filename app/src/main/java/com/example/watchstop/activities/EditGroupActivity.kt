@@ -119,7 +119,6 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
     val successColor = Color(0xFF34C759)
     val secondaryText = if (darkmode) Color(0xFF8E8E93) else Color(0xFF636366)
 
-    var showRemovalDialogFor by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         topBar = {
@@ -349,23 +348,22 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                         }
                                     }
                                 }
-                                if (!isSelf && isTargetAdmin && !isTargetSuperAdmin) {
+                                // For super admins, show immediate remove button (only for other super admins)
+                                if (!isSelf && isTargetSuperAdmin && currentIsSuperAdmin) {
                                     OutlinedButton(
-                                        onClick = { showRemovalDialogFor = member },
-                                        enabled = !hasVotedRemoval,
+                                        onClick = {
+                                            // Super admin can immediately remove another super admin
+                                            explicitlyRemovedMembers.value += member
+                                            memberNames.remove(member)
+                                            memberRoles.remove(member)
+                                            sharingEnabled.remove(member)
+                                            canToggle.remove(member)
+                                        },
                                         modifier = Modifier.height(32.dp),
                                         shape = RoundedCornerShape(8.dp),
-                                        border = BorderStroke(
-                                            1.dp,
-                                            if (hasVotedRemoval) Color.Gray.copy(alpha = 0.4f)
-                                            else destructiveColor.copy(alpha = 0.5f)
-                                        )
+                                        border = BorderStroke(1.dp, destructiveColor.copy(alpha = 0.5f))
                                     ) {
-                                        Text(
-                                            "Vote Remove (${removalVoteSet.size}/$removalNeeded)",
-                                            fontSize = 11.sp,
-                                            color = if (hasVotedRemoval) Color.Gray else destructiveColor
-                                        )
+                                        Text("Remove", fontSize = 11.sp, color = destructiveColor)
                                     }
                                 }
                             }
@@ -589,52 +587,5 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
             )
         }
 
-        // ── Admin Removal Dialog ───────────────────────────────────────
-        showRemovalDialogFor?.let { targetUid ->
-            var myName by remember { mutableStateOf("") }
-            val eligible = memberNames.filter { it != targetUid }
-            val needed = (eligible.size / 2) + 1
-
-            AlertDialog(
-                onDismissRequest = { showRemovalDialogFor = null },
-                title = { Text("Initiate Admin Removal") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("You are starting a vote to remove privileges from an Administrator.")
-                        Text("Requirement: Please enter your name to confirm initiation.")
-                        OutlinedTextField(
-                            value = myName,
-                            onValueChange = { myName = it },
-                            label = { Text("Your Name") },
-                            singleLine = true
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            coroutineScope.launch {
-                                try {
-                                    FirebaseRepository.voteToRemoveAdmin(
-                                        groupId, targetUid, currentUser)
-                                    val votes = removalVotes.getOrPut(targetUid) { mutableSetOf() }
-                                    votes.add(currentUser)
-                                    if (votes.size >= needed) {
-                                        memberRoles[targetUid] = GroupRole.MEMBER
-                                        canToggle[targetUid] = false
-                                        removalVotes.remove(targetUid)
-                                    }
-                                } catch (e: Exception) {
-                                    // ignore
-                                }
-                            }
-                            showRemovalDialogFor = null
-                        },
-                        enabled = myName.isNotBlank()
-                    ) { Text("Initiate Vote") }
-                },
-                dismissButton = { TextButton(onClick = { showRemovalDialogFor = null }) { Text("Cancel") } }
-            )
-        }
     }
 }

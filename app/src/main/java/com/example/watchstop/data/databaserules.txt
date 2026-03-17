@@ -66,9 +66,13 @@
         },
         "memberRoles": {
           "$uid": {
-            // Allow user to set themselves to MEMBER if they have a pending invite
-            // OR delete their own role when leaving (newData.val() === null)
-            ".write": "auth != null && (($uid === auth.uid && (root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists() || newData.val() === null)) || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
+            ".write": "auth != null && (
+              ($uid === auth.uid && (root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists() || newData.val() === null))
+              || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN'
+              || (newData.val() === 'MEMBER' &&
+                  root.child('groups').child($groupId).child('memberRoles').child($uid).val() === 'ADMIN' &&
+                  root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists())
+            )"
           }
         },
         "adminApplications": {
@@ -86,7 +90,10 @@
         "votesToRemoveAdmin": {
           "$targetUid": {
             "$voterUid": {
-              ".write": "auth != null && $voterUid === auth.uid && root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists() && root.child('groups').child($groupId).child('memberRoles').child($targetUid).val() !== 'SUPER_ADMIN'"
+              ".write": "auth != null &&
+                         $voterUid === auth.uid &&
+                         root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists() &&
+                         root.child('groups').child($groupId).child('memberRoles').child($targetUid).val() === 'ADMIN'"
             }
           }
         },
@@ -97,7 +104,6 @@
         },
         "locationSharingEnabled": {
           "$uid": {
-            // Allow user to write if they are the owner AND (joining OR leaving/cleaning up)
             ".write": "auth != null && ($uid === auth.uid && (root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists() || root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists() || newData.val() === null) || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
           }
         },

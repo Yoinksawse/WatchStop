@@ -2,6 +2,7 @@ package com.example.watchstop.view
 
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
@@ -11,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.HowToVote
 import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.LocationOn
@@ -45,12 +47,27 @@ fun GroupCard(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val snapshot = remember { CurrentGroupObject.getCurrentGroupEntry() }
 
     // Current user's UID — read at composition, stable after login
+    var myName by remember { mutableStateOf("") }
     val currentUid = UserProfileObject.uid ?: ""
     val userRole = groupEntryParameter.memberRoles[currentUid] ?: GroupRole.MEMBER
     val isAdmin = userRole == GroupRole.ADMIN || userRole == GroupRole.SUPER_ADMIN
     val isSuperAdmin = userRole == GroupRole.SUPER_ADMIN
+
+    //members stuff
+    val currentUser = UserProfileObject.uid ?: ""
+    val memberNames = remember { mutableStateListOf(*snapshot.groupMemberNames.toTypedArray()) }
+    var showRemovalDialogFor by remember { mutableStateOf<String?>(null) }
+    val memberRoles = remember { mutableStateMapOf<String, GroupRole>().apply { putAll(snapshot.memberRoles) } }
+    val removalVotes = remember {
+        mutableStateMapOf<String, MutableSet<String>>().apply {
+            snapshot.votesToRemoveAdmin.forEach { (k, v) -> put(k, v.toMutableSet()) }
+        }
+    }
+    val canToggle = remember { mutableStateMapOf<String, Boolean>().apply { putAll(snapshot.canToggleSharing) } }
+
 
     // Does this group have any super admin besides the current user?
     val hasSuperAdmin = groupEntryParameter.memberRoles.any { (uid, role) ->
@@ -229,33 +246,64 @@ fun GroupCard(
                             }
                         )
 
-                        // Vote to remove admin button (shown for Admin targets only, not SuperAdmin)
-                        if (memberUid != currentUid && memberRole == GroupRole.ADMIN) {
+                        // Admin removal buttons - different behavior based on role
+                        if (memberUid != currentUid) {
                             val hasVoted = group.hasVotedToRemove(memberUid, currentUid)
                             val voteCount = group.voteCountToRemove(memberUid)
                             val needed = group.votesNeededToRemove(memberUid)
-                            IconButton(
-                                onClick = {
-                                    coroutineScope.launch {
-                                        FirebaseRepository.voteToRemoveAdmin(
-                                            groupId, memberUid, currentUid)
-                                        val updated = GroupEntry(group)
-                                        updated.voteToRemoveAdmin(memberUid, currentUid)
-                                        group = updated
-                                        // voteToRemoveAdmin writes to its own Firebase path
-                                        // which any member can write — safe to call onEdited
-                                        // only if admin; skip it to avoid permission crash.
-                                    }
-                                },
-                                modifier = Modifier.size(28.dp),
-                                enabled = !hasVoted
-                            ) {
-                                Icon(
-                                    Icons.Default.HowToVote,
-                                    contentDescription = "Vote to remove ($voteCount/$needed)",
-                                    tint = if (hasVoted) Color.Gray else destructiveColor,
-                                    modifier = Modifier.size(16.dp)
-                                )
+
+                            // Only show for ADMIN targets (not SUPER_ADMIN)
+                            if (memberRole == GroupRole.ADMIN) {
+                                IconButton(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            if (isSuperAdmin) {
+                                                // Super admin can directly demote admin without vote
+                                                showRemovalDialogFor = memberUid
+                                            } else {
+                                                try {
+                                                    // Cast the vote - this will now auto-demote if threshold met
+                                                    val thresholdMet = FirebaseRepository.voteToRemoveAdmin(
+                                                        groupId, memberUid, currentUid
+                                                    )
+
+                                                    // Update local vote state
+                                                    val updated = GroupEntry(group)
+
+                                                    if (thresholdMet) {
+                                                        // If threshold was met, the user was already demoted
+                                                        // Update local state to reflect demotion
+                                                        updated.memberRoles[memberUid] = GroupRole.MEMBER
+                                                        updated.canToggleSharing[memberUid] = false
+                                                        updated.votesToRemoveAdmin.remove(memberUid)
+                                                    } else {
+                                                        // Just add the vote
+                                                        updated.voteToRemoveAdmin(memberUid, currentUid)
+                                                    }
+
+                                                    group = updated
+
+                                                    // Still show dialog if threshold met (for confirmation)
+                                                    if (thresholdMet) {
+                                                        showRemovalDialogFor = memberUid
+                                                    }
+                                                } catch (e: Exception) {
+                                                    Log.e("GroupCard", "Error voting", e)
+                                                }
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.size(28.dp),
+                                    enabled = if (isSuperAdmin) true else !hasVoted
+                                ) {
+                                    BadgedIcon(
+                                        hasVoted = hasVoted,
+                                        voteCount = voteCount,
+                                        needed = needed,
+                                        isSuperAdmin = isSuperAdmin,
+                                        isTargetSuperAdmin = false
+                                    )
+                                }
                             }
                         }
                     }
@@ -373,6 +421,151 @@ fun GroupCard(
                     }
                 }
 
+                // ── Admin Removal Dialog ───────────────────────────────────────
+                showRemovalDialogFor?.let { targetUid ->
+                    val targetRole = group.memberRoles[targetUid] ?: GroupRole.MEMBER
+                    val isTargetSuperAdmin = targetRole == GroupRole.SUPER_ADMIN
+                    val isTargetAdmin = targetRole == GroupRole.ADMIN
+                    val voteCount = group.voteCountToRemove(targetUid)
+                    val needed = group.votesNeededToRemove(targetUid)
+
+                    AlertDialog(
+                        onDismissRequest = { showRemovalDialogFor = null },
+                        title = {
+                            Text(
+                                when {
+                                    isTargetAdmin && isSuperAdmin -> "Demote Admin"
+                                    else -> "Complete Admin Demotion"
+                                }
+                            )
+                        },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                when {
+                                    // Direct admin removal by super admin
+                                    isSuperAdmin -> {
+                                        Text("You are about to demote an Admin.")
+                                        Text("This operation will be conducted using SuperAdmin privileges.")
+                                    }
+
+                                    // Vote-based removal completed
+                                    else -> {
+                                        Text("The vote to demote this Admin has reached the required threshold (${voteCount}/${needed}).")
+                                        Text("Do you want to complete the demotion process?")
+                                    }
+                                }
+
+                                // Show target member name
+                                var targetName by remember(targetUid) { mutableStateOf(targetUid) }
+                                LaunchedEffect(targetUid) {
+                                    targetName = FirebaseRepository.getUsername(targetUid)
+                                }
+
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                    )
+                                ) {
+                                    Text(
+                                        text = "Name of Target: $targetName",
+                                        modifier = Modifier.padding(12.dp),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                // For non-super admin removal by super admin, show simple confirmation field
+                                if (!isTargetSuperAdmin && isSuperAdmin) {
+                                    Text("Type 'DEMOTE' to confirm:")
+                                    OutlinedTextField(
+                                        value = myName,
+                                        onValueChange = { myName = it },
+                                        label = { Text("Confirmation") },
+                                        singleLine = true
+                                    )
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        try {
+                                            when {
+                                                // Direct admin demotion by super admin
+                                                isTargetAdmin && isSuperAdmin -> {
+                                                    FirebaseRepository.voteToRemoveAdmin(groupId, targetUid, currentUid)
+
+                                                    // Update local state
+                                                    val updated = GroupEntry(group)
+                                                    updated.memberRoles[targetUid] = GroupRole.MEMBER
+                                                    updated.canToggleSharing[targetUid] = false
+                                                    updated.votesToRemoveAdmin.remove(targetUid)
+                                                    group = updated
+                                                    onEdited(updated)
+                                                }
+
+                                                // Vote-based demotion completed
+                                                else -> {
+                                                    // The admin might already be demoted by the auto-demotion
+                                                    // Check current role from Firebase to be sure
+                                                    val freshGroup = FirebaseRepository.getGroup(groupId)
+                                                    if (freshGroup != null) {
+                                                        val currentTargetRole = freshGroup.memberRoles[targetUid]
+                                                        if (currentTargetRole == GroupRole.MEMBER) {
+                                                            // Already demoted, just update local state
+                                                            val updated = GroupEntry(group)
+                                                            updated.memberRoles[targetUid] = GroupRole.MEMBER
+                                                            updated.canToggleSharing[targetUid] = false
+                                                            updated.votesToRemoveAdmin.remove(targetUid)
+                                                            group = updated
+                                                            onEdited(updated)
+                                                        } else {
+                                                            // Not demoted yet, call the function
+                                                            FirebaseRepository.voteToRemoveAdmin(groupId, targetUid, currentUid)
+
+                                                            val updated = GroupEntry(group)
+                                                            updated.memberRoles[targetUid] = GroupRole.MEMBER
+                                                            updated.canToggleSharing[targetUid] = false
+                                                            updated.votesToRemoveAdmin.remove(targetUid)
+                                                            group = updated
+                                                            onEdited(updated)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            Log.e("GroupCard", "Error in dialog action", e)
+                                        }
+                                    }
+                                    showRemovalDialogFor = null
+                                    myName = ""
+                                },
+                                enabled = when {
+                                    isTargetSuperAdmin && isSuperAdmin -> myName == "REMOVE"
+                                    isTargetAdmin && isSuperAdmin -> myName == "DEMOTE"
+                                    else -> true
+                                }
+                            ) {
+                                Text(
+                                    when {
+                                        isTargetSuperAdmin -> "Remove"
+                                        else -> "Demote to Member"
+                                    }
+                                )
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = {
+                                showRemovalDialogFor = null
+                                myName = ""
+                            }) {
+                                Text("Cancel")
+                            }
+                        }
+                    )
+                }
+
                 // ── Pending applications visible to admins ──────────────────
                 if (isAdmin) {
                     val pending = group.adminApplications.filter { it != currentUid }
@@ -464,5 +657,49 @@ fun SketchButton(text: String, onClick: () -> Unit) {
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f))
     ) {
         Text(text, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun BadgedIcon(
+    hasVoted: Boolean,
+    voteCount: Int,
+    needed: Int,
+    isSuperAdmin: Boolean,
+    isTargetSuperAdmin: Boolean
+) {
+    val destructiveColor = Color(0xFFFF3B30)
+
+    Box(contentAlignment = Alignment.Center) {
+        Icon(
+            Icons.Default.HowToVote,
+            contentDescription = when {
+                isSuperAdmin && !isTargetSuperAdmin -> "Demote Admin"
+                else -> "Vote to demote ($voteCount/$needed)"
+            },
+            tint = when {
+                hasVoted -> Color.Gray
+                isSuperAdmin -> destructiveColor
+                else -> destructiveColor
+            },
+            modifier = Modifier.size(16.dp)
+        )
+
+        // Show vote count badge for non-super admins voting
+        if (!isSuperAdmin && !isTargetSuperAdmin && !hasVoted) {
+            Text(
+                text = "$voteCount",
+                fontSize = 8.sp,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 8.dp, y = (-4).dp)
+                    .background(
+                        color = destructiveColor,
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .padding(horizontal = 2.dp, vertical = 1.dp)
+            )
+        }
     }
 }
