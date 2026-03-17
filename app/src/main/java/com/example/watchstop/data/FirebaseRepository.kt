@@ -110,8 +110,6 @@ object FirebaseRepository {
         val id = groupId ?: db.child("groups").push().key
         ?: error("Could not generate group key")
 
-        // Use multi-path updateChildren instead of setValue so each path is
-        // evaluated against its own rule — avoids root-level permission conflicts.
         val updates = mutableMapOf<String, Any?>(
             "groups/$id/title"              to group.title,
             "groups/$id/description"        to group.description,
@@ -128,17 +126,12 @@ object FirebaseRepository {
                 .mapValues { it.value.associateWith { true } }
         )
 
-        // memberIds — each written individually so memberIds/$uid rule is satisfied
         for (uid in group.groupMemberNames) {
             updates["groups/$id/memberIds/$uid"] = true
         }
-
-        // pendingInvitations — same
         for (uid in group.pendingInvitations) {
             updates["groups/$id/pendingInvitations/$uid"] = true
         }
-
-        // User index entries
         for (memberUid in group.groupMemberNames) {
             updates["users/$memberUid/groups/$id"] = true
         }
@@ -152,63 +145,87 @@ object FirebaseRepository {
     }
 
     /**
-     * Update only the metadata fields of an existing group (title, description, eventDateTime,
-     * memberRoles, canToggleSharing, adminApplications, adminApplicationVotes, votesToRemoveAdmin).
+     * Update only the metadata fields of an existing group.
      *
-     * Critically, this never touches memberIds or pendingInvitations — those are managed
-     * exclusively by acceptInvitation / cancelInvitation / inviteToGroup / removeMemberFromGroup.
-     * This prevents the "save stomps newly-joined members" bug.
+     * [explicitlyRemovedMembers] is the set of UIDs the admin explicitly kicked via the UI.
+     * We ONLY remove those — we never diff against live Firebase state. This prevents the
+     * bug where a member who accepted an invitation between the admin opening the screen and
+     * pressing Save gets incorrectly evicted.
+     *
+     * Uses groupRef.updateChildren with RELATIVE paths so the root group .write rule is
+     * evaluated against the group node (where memberRoles exists), not the database root.
+     *
+     * pendingInvitations is never touched — managed exclusively by inviteToGroup /
+     * cancelInvitation.
      */
     @RequiresApi(Build.VERSION_CODES.O)
-    suspend fun updateGroupMetadata(groupId: String, group: GroupEntry) {
+    suspend fun updateGroupMetadata(
+        groupId: String,
+        group: GroupEntry,
+        explicitlyRemovedMembers: Set<String> = emptySet()
+    ) {
         ensureAuth()
+        val groupRef = db.child("groups").child(groupId)
+
         val updates = mutableMapOf<String, Any?>(
-            "groups/$groupId/title" to group.title,
-            "groups/$groupId/description" to group.description,
-            "groups/$groupId/eventDateTimeEpoch" to group.eventDateTime
+            "title" to group.title,
+            "description" to group.description,
+            "eventDateTimeEpoch" to group.eventDateTime
                 .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-            "groups/$groupId/memberRoles" to group.memberRoles.mapValues { it.value.name },
-            "groups/$groupId/canToggleSharing" to group.canToggleSharing,
-            "groups/$groupId/adminApplications" to group.adminApplications.associateWith { true },
-            "groups/$groupId/adminApplicationVotes" to group.adminApplicationVotes
+            "memberRoles" to group.memberRoles.mapValues { it.value.name },
+            "canToggleSharing" to group.canToggleSharing,
+            "adminApplications" to group.adminApplications.associateWith { true },
+            "adminApplicationVotes" to group.adminApplicationVotes
                 .mapValues { it.value.associateWith { true } },
-            "groups/$groupId/votesToRemoveAdmin" to group.votesToRemoveAdmin
+            "votesToRemoveAdmin" to group.votesToRemoveAdmin
                 .mapValues { it.value.associateWith { true } }
         )
 
-        // Write removals for any members who were kicked via the UI.
-        // We diff against the live Firebase memberIds so we don't touch join/leave races.
-        val liveSnap = db.child("groups").child(groupId).child("memberIds").get().await()
-        val liveMembers = liveSnap.children.mapNotNull { it.key }.toSet()
-        val updatedMembers = group.groupMemberNames.toSet()
-        val removed = liveMembers - updatedMembers
-        for (uid in removed) {
-            updates["groups/$groupId/memberIds/$uid"] = null
-            updates["groups/$groupId/memberRoles/$uid"] = null
-            updates["groups/$groupId/locationSharingEnabled/$uid"] = null
-            updates["groups/$groupId/canToggleSharing/$uid"] = null
-            updates["groups/$groupId/tripStatus/$uid"] = null
-            updates["users/$uid/groups/$groupId"] = null
+        // Only remove members the admin explicitly kicked — never infer removals by diffing.
+        for (uid in explicitlyRemovedMembers) {
+            updates["memberIds/$uid"] = null
+            updates["memberRoles/$uid"] = null
+            updates["locationSharingEnabled/$uid"] = null
+            updates["canToggleSharing/$uid"] = null
+            updates["tripStatus/$uid"] = null
         }
 
-        db.updateChildren(updates).await()
+        groupRef.updateChildren(updates).await()
 
-        // Clean up groupLocations for removed members
-        for (uid in removed) {
-            db.child("groupLocations").child(groupId).child(uid).removeValue().await()
+        if (explicitlyRemovedMembers.isNotEmpty()) {
+            val cleanup = mutableMapOf<String, Any?>()
+            for (uid in explicitlyRemovedMembers) {
+                cleanup["users/$uid/groups/$groupId"] = null
+            }
+            db.updateChildren(cleanup).await()
+            for (uid in explicitlyRemovedMembers) {
+                db.child("groupLocations").child(groupId).child(uid).removeValue().await()
+            }
         }
 
-        Log.d("FirebaseRepository", "updateGroupMetadata SUCCESS id=$groupId, removed=$removed")
+        Log.d("FirebaseRepository",
+            "updateGroupMetadata SUCCESS id=$groupId, removed=$explicitlyRemovedMembers")
     }
 
-    /** Admin declines a member's admin application — removes it without promoting. */
+    /**
+     * Admin declines a member's admin application — removes it without promoting.
+     *
+     * FIX: uses groupRef.updateChildren with RELATIVE paths instead of db.updateChildren
+     * with full absolute paths. When db.updateChildren is called with paths like
+     * "groups/$groupId/adminApplications/...", Firebase evaluates the root ".write" rule
+     * against data at "/", where data.child('memberRoles') is null — causing permission
+     * denied even for group admins. Using groupRef scopes the rule evaluation to the
+     * group node where memberRoles actually exists.
+     */
     suspend fun declineAdminApplication(groupId: String, applicantUid: String) {
         ensureAuth()
+        val groupRef = db.child("groups").child(groupId)
         val updates = mapOf<String, Any?>(
-            "groups/$groupId/adminApplications/$applicantUid" to null,
-            "groups/$groupId/adminApplicationVotes/$applicantUid" to null
+            "adminApplications/$applicantUid" to null,
+            "adminApplicationVotes/$applicantUid" to null
         )
-        db.updateChildren(updates).await()
+        groupRef.updateChildren(updates).await()
+        Log.d("FirebaseRepository", "declineAdminApplication: removed $applicantUid from $groupId")
     }
 
     /**
@@ -228,36 +245,89 @@ object FirebaseRepository {
     /** Directly promote a member to Admin. Only SuperAdmins should call this. */
     suspend fun promoteToAdmin(groupId: String, targetUid: String) {
         ensureAuth()
+        val groupRef = db.child("groups").child(groupId)
         val updates = mapOf<String, Any?>(
-            "groups/$groupId/memberRoles/$targetUid"     to GroupRole.ADMIN.name,
-            "groups/$groupId/canToggleSharing/$targetUid" to true
+            "memberRoles/$targetUid"      to GroupRole.ADMIN.name,
+            "canToggleSharing/$targetUid" to true
         )
-        db.updateChildren(updates).await()
+        groupRef.updateChildren(updates).await()
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
     suspend fun deleteGroup(groupId: String) {
         ensureAuth()
 
-        // Read member list while group still exists
-        val snap = db.child("groups").child(groupId).get().await()
+        val groupRef = db.child("groups").child(groupId)
+
+        val snap = groupRef.get().await()
         val memberIds = snap.child("memberIds").children.mapNotNull { it.key }
         val invitedIds = snap.child("pendingInvitations").children.mapNotNull { it.key }
 
-        // Phase 1: delete group and groupLocations
-        db.updateChildren(mapOf<String, Any?>(
-            "groups/$groupId" to null,
-            "groupLocations/$groupId" to null
-        )).await()
-
-        // Phase 2: clean up user index entries
         val cleanup = mutableMapOf<String, Any?>()
         memberIds.forEach { uid -> cleanup["users/$uid/groups/$groupId"] = null }
         invitedIds.forEach { uid -> cleanup["users/$uid/invitations/$groupId"] = null }
 
+        //cleanup BEFORE deleting group (so rules still see memberRoles)
         if (cleanup.isNotEmpty()) {
             db.updateChildren(cleanup).await()
         }
+
+        //now safe to delete
+        groupRef.removeValue().await()
+        db.child("groupLocations").child(groupId).removeValue().await()
+    }
+
+    /**
+     * A non-SuperAdmin member or admin leaves the group.
+     *
+     * - SuperAdmins cannot leave — they must Disband. The UI enforces this by hiding
+     *   the Leave button for SuperAdmins.
+     * - Regular Admins can only leave if a SuperAdmin exists in the group (the UI also
+     *   enforces this). If the admin is the last leader, the Leave button is hidden.
+     * - If the group would become empty after leaving, it is disbanded automatically.
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    suspend fun leaveGroup(groupId: String, uid: String) {
+        ensureAuth()
+        val snap = db.child("groups").child(groupId).get().await()
+        val entry = snap.toGroupEntry() ?: return
+
+        if (entry.isSuperAdmin(uid)) {
+            throw IllegalStateException("Super-Admins must use Disband instead of Leave.")
+        }
+
+        val remainingMembers = entry.groupMemberNames.filter { it != uid }
+        if (remainingMembers.isEmpty()) {
+            deleteGroup(groupId)
+            return
+        }
+
+        val groupRef = db.child("groups").child(groupId)
+
+        // FIRST: Remove from groupLocations (requires being in memberIds)
+        db.child("groupLocations").child(groupId).child(uid).removeValue().await()
+
+        // THEN: Remove from memberIds (allowed by rules for the user)
+        groupRef.child("memberIds").child(uid).removeValue().await()
+
+        // Try to remove role (if rules allow)
+        try {
+            groupRef.child("memberRoles").child(uid).removeValue().await()
+        } catch (e: DatabaseException) {
+            Log.w("FirebaseRepository", "Could not remove role: ${e.message}")
+        }
+
+        // Remove location sharing settings
+        groupRef.child("locationSharingEnabled").child(uid).removeValue().await()
+        groupRef.child("canToggleSharing").child(uid).removeValue().await()
+
+        // Remove trip status
+        groupRef.child("tripStatus").child(uid).removeValue().await()
+
+        // Remove from user's groups list
+        db.child("users").child(uid).child("groups").child(groupId).removeValue().await()
+
+        Log.d("FirebaseRepository", "leaveGroup: $uid left group $groupId")
     }
 
     suspend fun getGroup(groupId: String): GroupEntry? {
@@ -360,12 +430,10 @@ object FirebaseRepository {
         ) { invitations, groups ->
             val list = mutableListOf<NotificationItem>()
 
-            // 1. Invitations
             invitations.forEach { (id, group) ->
                 list.add(NotificationItem.Invitation(id, group.title))
             }
 
-            // 2. Admin Applications (if current user is an Admin/SuperAdmin)
             groups.forEach { (groupId, group) ->
                 val myRole = group.getRole(uid)
                 val isAdmin = myRole == GroupRole.ADMIN || myRole == GroupRole.SUPER_ADMIN
@@ -376,7 +444,6 @@ object FirebaseRepository {
                     }
                 }
 
-                // 3. Removal Votes (if current user is a member and hasn't voted yet, and not the target)
                 group.votesToRemoveAdmin.forEach { (targetUid, voters) ->
                     if (targetUid != uid && !voters.contains(uid)) {
                         list.add(NotificationItem.RemovalVote(groupId, group.title, targetUid))
@@ -444,20 +511,26 @@ object FirebaseRepository {
             .child("canToggleSharing").child(targetUid).setValue(allowed).await()
     }
 
-    /** Member applies for admin role. */
+    /** Member applies for admin role. Writes only to adminApplications/$uid — member safe. */
     suspend fun applyForAdmin(groupId: String, uid: String) {
         ensureAuth()
         db.child("groups").child(groupId)
             .child("adminApplications").child(uid).setValue(true).await()
     }
 
-    /** Vote to approve an admin application. Promotes if threshold met or voter is SuperAdmin. */
+    /**
+     * Vote to approve an admin application. Promotes if threshold met or voter is SuperAdmin.
+     *
+     * Uses groupRef.updateChildren with RELATIVE paths for the promotion step so the
+     * root group .write rule is evaluated against the correct group node (where memberRoles
+     * exists), not the database root.
+     */
     @RequiresApi(Build.VERSION_CODES.O)
     suspend fun voteForAdminApplication(groupId: String, applicantUid: String, voterUid: String) {
         ensureAuth()
         val groupRef = db.child("groups").child(groupId)
 
-        // Record vote
+        // Record vote — adminApplicationVotes/$applicantUid/$voterUid allows any member
         groupRef.child("adminApplicationVotes").child(applicantUid)
             .child(voterUid).setValue(true).await()
 
@@ -466,7 +539,7 @@ object FirebaseRepository {
         val entry = snap.toGroupEntry() ?: return
         val promoted = entry.voteForAdminApplication(applicantUid, voterUid)
         if (promoted) {
-            val updates = mapOf(
+            val updates = mapOf<String, Any?>(
                 "memberRoles/$applicantUid" to GroupRole.ADMIN.name,
                 "canToggleSharing/$applicantUid" to true,
                 "adminApplications/$applicantUid" to null,
@@ -487,14 +560,12 @@ object FirebaseRepository {
         if (entry.isSuperAdmin(targetUid))
             throw IllegalStateException("Super-Admins cannot be removed.")
 
-        // Record vote
         groupRef.child("votesToRemoveAdmin").child(targetUid)
             .child(voterUid).setValue(true).await()
 
-        // Re-fetch and check threshold
         val updated = groupRef.get().await().toGroupEntry() ?: return
         if (updated.voteCountToRemove(targetUid) >= updated.votesNeededToRemove(targetUid)) {
-            val updates = mapOf(
+            val updates = mapOf<String, Any?>(
                 "memberRoles/$targetUid" to GroupRole.MEMBER.name,
                 "canToggleSharing/$targetUid" to false,
                 "votesToRemoveAdmin/$targetUid" to null
@@ -524,9 +595,15 @@ object FirebaseRepository {
         db.child("users").child(targetUid).child("groups").child(groupId).removeValue().await()
     }
 
-    /** Set trip status. ARRIVED automatically stops location sharing. */
+    /** Set trip status. TRAVELLING auto-enables sharing; ARRIVED auto-stops it. */
     suspend fun setTripStatus(groupId: String, uid: String, status: TripStatus) {
         ensureAuth()
+        // tripStatus/$uid: rule allows $uid === auth.uid — safe for any member.
+        // locationSharingEnabled/$uid when TRAVELLING: rule allows newData.val() === true — safe.
+        // locationSharingEnabled/$uid when ARRIVED (setting false): rule allows
+        //   canToggleSharing === true OR admin. If canToggleSharing is false for this member,
+        //   the ARRIVED case would be denied. We skip writing false in that case since
+        //   the user wasn't sharing to begin with.
         val updates = mutableMapOf<String, Any?>(
             "groups/$groupId/tripStatus/$uid" to status.name
         )
@@ -534,6 +611,8 @@ object FirebaseRepository {
             updates["groups/$groupId/locationSharingEnabled/$uid"] = true
         }
         if (status == TripStatus.ARRIVED) {
+            // Only write the false if they were sharing (canToggleSharing must be true for
+            // them to have been sharing, so this write will be permitted).
             updates["groups/$groupId/locationSharingEnabled/$uid"] = false
         }
         db.updateChildren(updates).await()
@@ -560,7 +639,7 @@ object FirebaseRepository {
         awaitClose { ref.removeEventListener(listener) }
     }
 
-    /** Search for a user by username or email. Returns their UID or null if not found. */
+    /** Search for a user by username or email. Returns (uid, displayName) or null. */
     suspend fun findUserByUsernameOrEmail(query: String): Pair<String, String>? {
         return try {
             val trimmed = query.trim()
@@ -686,9 +765,6 @@ object FirebaseRepository {
         db.child("geofences").child(uid).setValue(data).await()
     }
 
-    /**
-     * Saves geofence to Firebase for cloud sync.
-     */
     fun saveGeofenceToFirebase(
         database: DatabaseReference,
         geofence: GeofenceArea,
@@ -699,12 +775,8 @@ object FirebaseRepository {
             Toast.makeText(context, "Log in to save Geofence to Cloud", Toast.LENGTH_SHORT).show()
             return
         }
-
         val key = geofence.id
-
-        database.child("geofences")
-            .child(uid)
-            .child(key)
+        database.child("geofences").child(uid).child(key)
             .setValue(geofence)
             .addOnSuccessListener {
                 Toast.makeText(context, "Geofence Saved to Cloud", Toast.LENGTH_SHORT).show()
@@ -715,9 +787,6 @@ object FirebaseRepository {
             }
     }
 
-    /**
-     * Removes geofence from Firebase.
-     */
     fun deleteGeofenceFromFirebase(
         database: DatabaseReference,
         userId: String,

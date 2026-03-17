@@ -52,6 +52,11 @@ fun GroupCard(
     val isAdmin = userRole == GroupRole.ADMIN || userRole == GroupRole.SUPER_ADMIN
     val isSuperAdmin = userRole == GroupRole.SUPER_ADMIN
 
+    // Does this group have any super admin besides the current user?
+    val hasSuperAdmin = groupEntryParameter.memberRoles.any { (uid, role) ->
+        role == GroupRole.SUPER_ADMIN
+    }
+
     // Local copy so optimistic UI updates feel instant before Firebase confirms
     var group by remember(groupEntryParameter) { mutableStateOf(GroupEntry(groupEntryParameter)) }
 
@@ -109,26 +114,45 @@ fun GroupCard(
                             fontWeight = FontWeight.SemiBold
                         )
                     }
-                    Text(
-                        text = when {
-                            isSuperAdmin -> "Disband"
-                            isAdmin -> "Leave"
-                            else -> "Leave"
-                        },
-                        color = destructiveColor,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clickable {
-                            //TODO: show confirmation dialogbox
-                            coroutineScope.launch {
-                                when {
-                                    isSuperAdmin -> FirebaseRepository.deleteGroup(groupId)
-                                    isAdmin -> onDeleted()
-                                    else -> FirebaseRepository.removeMemberFromGroup(groupId, currentUid)
+
+                    // Disband: only SuperAdmin.
+                    // Leave: any non-SuperAdmin member (including regular Admin), BUT
+                    //   a regular Admin can only leave if there is already a SuperAdmin present
+                    //   (otherwise they would leave a group with no SuperAdmin, which is disallowed).
+                    //   If they ARE the only admin with no SuperAdmin, the button is hidden.
+                    val canLeave = when {
+                        isSuperAdmin -> false           // SuperAdmin uses Disband, not Leave
+                        isAdmin -> hasSuperAdmin        // Admin can only leave if SuperAdmin exists
+                        else -> true                    // regular members can always leave
+                    }
+
+                    if (isSuperAdmin) {
+                        Text(
+                            text = "Disband",
+                            color = destructiveColor,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable {
+                                //TODO: show confirmation dialog
+                                coroutineScope.launch {
+                                    FirebaseRepository.deleteGroup(groupId)
                                 }
                             }
-                        }
-                    )
+                        )
+                    } else if (canLeave) {
+                        Text(
+                            text = "Leave",
+                            color = destructiveColor,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable {
+                                //TODO: show confirmation dialog
+                                coroutineScope.launch {
+                                    FirebaseRepository.leaveGroup(groupId, currentUid)
+                                }
+                            }
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -205,30 +229,6 @@ fun GroupCard(
                             }
                         )
 
-                        // Admin can lock/allow sharing for members
-                        if (isAdmin && memberUid != currentUid && memberRole == GroupRole.MEMBER) {
-                            val memberCanToggle = group.canToggleSharing[memberUid] ?: false
-                            TextButton(
-                                onClick = {
-                                    coroutineScope.launch {
-                                        FirebaseRepository.setCanToggleSharing(
-                                            groupId, memberUid, !memberCanToggle)
-                                        val updated = GroupEntry(group)
-                                        updated.setCanToggleSharing(memberUid, !memberCanToggle)
-                                        group = updated
-                                        onEdited(updated)
-                                    }
-                                },
-                                contentPadding = PaddingValues(horizontal = 4.dp)
-                            ) {
-                                Text(
-                                    if (memberCanToggle) "Revoke Sharing" else "Allow Sharing",
-                                    fontSize = 11.sp,
-                                    color = if (memberCanToggle) destructiveColor else accentColor
-                                )
-                            }
-                        }
-
                         // Vote to remove admin button (shown for Admin targets only, not SuperAdmin)
                         if (memberUid != currentUid && memberRole == GroupRole.ADMIN) {
                             val hasVoted = group.hasVotedToRemove(memberUid, currentUid)
@@ -242,7 +242,9 @@ fun GroupCard(
                                         val updated = GroupEntry(group)
                                         updated.voteToRemoveAdmin(memberUid, currentUid)
                                         group = updated
-                                        onEdited(updated)
+                                        // voteToRemoveAdmin writes to its own Firebase path
+                                        // which any member can write — safe to call onEdited
+                                        // only if admin; skip it to avoid permission crash.
                                     }
                                 },
                                 modifier = Modifier.size(28.dp),
@@ -283,17 +285,21 @@ fun GroupCard(
                                     try {
                                         FirebaseRepository.toggleLocationSharing(
                                             groupId, currentUid, !isSharing)
+                                        // Update local state only — toggleLocationSharing writes
+                                        // directly to locationSharingEnabled/$uid which the user
+                                        // can write (canToggleSharing === true). Do NOT call
+                                        // onEdited here: updateGroupMetadata requires admin and
+                                        // would crash any member with sharing permission.
                                         val updated = GroupEntry(group)
                                         updated.setSharing(currentUid, !isSharing)
                                         group = updated
-                                        onEdited(updated)
-                                    } catch (e: Exception) { /* locked */ }
+                                    } catch (e: Exception) { /* sharing locked */ }
                                 }
                             }
                         }
                     )
 
-                    // Trip status cycle: Inactive → En Route → Arrived → Inactive
+                    // Trip status cycle: Inactive → Travelling → Arrived → Inactive
                     SketchButton(
                         text = when (currentStatus) {
                             TripStatus.INACTIVE -> "Start Trip"
@@ -307,11 +313,14 @@ fun GroupCard(
                                 TripStatus.ARRIVED -> TripStatus.INACTIVE
                             }
                             coroutineScope.launch {
+                                // setTripStatus writes to tripStatus/$uid (member can write own)
+                                // and locationSharingEnabled/$uid (allowed when canToggleSharing
+                                // or travelling). Do NOT call onEdited — updateGroupMetadata
+                                // requires admin and crashes any plain member or applicant.
                                 FirebaseRepository.setTripStatus(groupId, currentUid, next)
                                 val updated = GroupEntry(group)
                                 updated.setTripStatus(currentUid, next)
                                 group = updated
-                                onEdited(updated)
                             }
                         }
                     )
@@ -333,11 +342,13 @@ fun GroupCard(
                         text = "Apply for Admin",
                         onClick = {
                             coroutineScope.launch {
+                                // applyForAdmin writes directly to adminApplications/$uid
+                                // which the rule allows for any member. Do NOT call onEdited —
+                                // updateGroupMetadata requires admin and crashes members.
                                 FirebaseRepository.applyForAdmin(groupId, currentUid)
                                 val updated = GroupEntry(group)
                                 updated.applyForAdmin(currentUid)
                                 group = updated
-                                //onEdited(updated) TODO: keep?
                             }
                         }
                     )
@@ -402,6 +413,8 @@ fun GroupCard(
                                             val updated = GroupEntry(group)
                                             updated.voteForAdminApplication(applicantUid, currentUid)
                                             group = updated
+                                            // voteForAdminApplication uses groupRef.updateChildren
+                                            // (relative paths) which admins can write — safe.
                                             onEdited(updated)
                                         }
                                     },

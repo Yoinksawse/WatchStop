@@ -67,7 +67,8 @@
         "memberRoles": {
           "$uid": {
             // Allow user to set themselves to MEMBER if they have a pending invite
-            ".write": "auth != null && (($uid === auth.uid && root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists()) || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
+            // OR delete their own role when leaving (newData.val() === null)
+            ".write": "auth != null && (($uid === auth.uid && (root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists() || newData.val() === null)) || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
           }
         },
         "adminApplications": {
@@ -89,21 +90,20 @@
             }
           }
         },
-        "locationSharingEnabled": {
-          "$uid": {
-            // Allow initialization (setting to false) when joining
-            ".write": "auth != null && ($uid === auth.uid && (root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists() || newData.val() === true || root.child('groups').child($groupId).child('canToggleSharing').child(auth.uid).val() === true) || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
-          }
-        },
         "tripStatus": {
           "$uid": {
             ".write": "auth != null && $uid === auth.uid"
           }
         },
+        "locationSharingEnabled": {
+          "$uid": {
+            // Allow user to write if they are the owner AND (joining OR leaving/cleaning up)
+            ".write": "auth != null && ($uid === auth.uid && (root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists() || root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists() || newData.val() === null) || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
+          }
+        },
         "canToggleSharing": {
           "$uid": {
-            // Allow user to initialize their own toggle state when joining
-            ".write": "auth != null && (($uid === auth.uid && root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists()) || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
+            ".write": "auth != null && (($uid === auth.uid && (root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists() || root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists() || newData.val() === null)) || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
           }
         }
       }

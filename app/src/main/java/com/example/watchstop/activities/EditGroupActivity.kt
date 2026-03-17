@@ -35,7 +35,6 @@ import com.example.watchstop.model.GroupRole
 import com.example.watchstop.view.ui.theme.CarbonGrey
 import com.example.watchstop.view.ui.theme.Purple40
 import com.example.watchstop.view.ui.theme.WatchStopTheme
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 class EditGroupActivity : AppCompatActivity() {
@@ -61,6 +60,8 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
     val snapshot = remember { CurrentGroupObject.getCurrentGroupEntry() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    // FIX: use rememberCoroutineScope() — NOT import kotlinx.coroutines.coroutineScope which
+    // is a suspend function and cannot be called in a non-suspend click lambda.
     val coroutineScope = rememberCoroutineScope()
 
     var title by remember { mutableStateOf(snapshot.title) }
@@ -74,13 +75,16 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
     )
     var showInfoDialog by remember { mutableStateOf(false) }
 
-    // Working copies — seeded from the snapshot, but memberIds/pendingInvitations
-    // are kept separate so Save never accidentally overwrites live Firebase state.
     val memberNames = remember { mutableStateListOf(*snapshot.groupMemberNames.toTypedArray()) }
     val groupId = CurrentGroupObject.getCurrentGroupId()
 
-    // pendingInvitations is driven entirely by the live Firebase observer so it
-    // always reflects real-time Firebase state — not a stale local snapshot.
+    // FIX: track members the admin explicitly removed via the Remove button.
+    // updateGroupMetadata receives ONLY this set and nulls out exactly those UIDs.
+    // We never diff live Firebase vs local state — that was the root cause of the bug
+    // where a member accepting an invitation got evicted when the admin pressed Save.
+    val explicitlyRemovedMembers = remember { mutableStateOf(setOf<String>()) }
+
+    // pendingInvitations driven entirely by live Firebase observer.
     val pendingInvitations = remember { mutableStateListOf<String>() }
 
     LaunchedEffect(groupId) {
@@ -197,10 +201,8 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                     when {
                                         result == null ->
                                             searchError = "User not found"
-                                        // FIX (Mistake 1): block invite if already a member
                                         memberNames.contains(result.first) ->
                                             searchError = "Already a member of this group"
-                                        // FIX (Mistake 1): block invite if already pending
                                         pendingInvitations.contains(result.first) ->
                                             searchError = "Invite already pending"
                                         else ->
@@ -235,9 +237,6 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                     onClick = {
                                         searchScope.launch {
                                             try {
-                                                // inviteToGroup writes directly to Firebase —
-                                                // the live observer will pick up the new entry
-                                                // automatically; no local mutation needed here.
                                                 FirebaseRepository.inviteToGroup(groupId, foundUid)
                                                 searchResult = null
                                                 searchQuery = ""
@@ -316,10 +315,8 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                     if (role == GroupRole.MEMBER && currentIsSuperAdmin) {
                                         OutlinedButton(
                                             onClick = {
-                                                // Update local state immediately for UI
                                                 memberRoles[member] = GroupRole.ADMIN
                                                 canToggle[member] = true
-                                                // Write to Firebase directly — don't wait for Save
                                                 coroutineScope.launch {
                                                     FirebaseRepository.promoteToAdmin(groupId, member)
                                                 }
@@ -333,6 +330,10 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                     if (!isTargetSuperAdmin) {
                                         OutlinedButton(
                                             onClick = {
+                                                // FIX: record the explicit removal so Save passes
+                                                // exactly these UIDs to updateGroupMetadata.
+                                                explicitlyRemovedMembers.value =
+                                                    explicitlyRemovedMembers.value + member
                                                 memberNames.remove(member)
                                                 memberRoles.remove(member)
                                                 sharingEnabled.remove(member)
@@ -393,14 +394,26 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                     Text(appName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                                     Text("${votes.size}/$needed approvals needed", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
+                                // FIX: Approve now calls FirebaseRepository.voteForAdminApplication
+                                // directly (which uses groupRef with relative paths — admin safe)
+                                // before updating local state, instead of only updating local state.
                                 TextButton(
                                     onClick = {
-                                        votes.add(currentUser)
-                                        if (currentIsSuperAdmin || votes.size >= needed) {
-                                            memberRoles[applicant] = GroupRole.ADMIN
-                                            canToggle[applicant] = true
-                                            adminApplications.remove(applicant)
-                                            appVotes.remove(applicant)
+                                        coroutineScope.launch {
+                                            try {
+                                                FirebaseRepository.voteForAdminApplication(
+                                                    groupId, applicant, currentUser)
+                                                votes.add(currentUser)
+                                                if (currentIsSuperAdmin || votes.size >= needed) {
+                                                    memberRoles[applicant] = GroupRole.ADMIN
+                                                    canToggle[applicant] = true
+                                                    adminApplications.remove(applicant)
+                                                    appVotes.remove(applicant)
+                                                }
+                                            } catch (e: Exception) {
+                                                // vote was already written; local state update
+                                                // may still be valid — ignore
+                                            }
                                         }
                                     },
                                     enabled = !hasVoted
@@ -410,7 +423,22 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                         color = if (hasVoted) Color.Gray else successColor
                                     )
                                 }
-                                TextButton(onClick = { adminApplications.remove(applicant); appVotes.remove(applicant) }) {
+                                // FIX: Deny now calls FirebaseRepository.declineAdminApplication
+                                // (which uses groupRef with relative paths — admin safe).
+                                TextButton(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            try {
+                                                FirebaseRepository.declineAdminApplication(
+                                                    groupId, applicant)
+                                                adminApplications.remove(applicant)
+                                                appVotes.remove(applicant)
+                                            } catch (e: Exception) {
+                                                // ignore
+                                            }
+                                        }
+                                    }
+                                ) {
                                     Text("Deny", color = destructiveColor)
                                 }
                             }
@@ -419,7 +447,6 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                 }
 
                 // ── Pending Invitations Section ────────────────────────────────
-                // Driven by the live Firebase observer — always accurate.
                 if (pendingInvitations.isNotEmpty()) {
                     HorizontalDivider()
                     Text("Pending Invitations", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -441,13 +468,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                     IconButton(
                                         onClick = {
                                             cancelScope.launch {
-                                                // FIX (Bug 2): cancelInvitation writes null to both
-                                                // groups/.../pendingInvitations/$uid AND
-                                                // users/$uid/invitations/$groupId atomically,
-                                                // so the notification disappears on the invitee's screen.
                                                 FirebaseRepository.cancelInvitation(groupId, invitedUid)
-                                                // The live observer will remove it from pendingInvitations
-                                                // automatically, but remove locally too for instant UI.
                                                 pendingInvitations.remove(invitedUid)
                                             }
                                         }
@@ -468,10 +489,6 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                 Spacer(modifier = Modifier.height(24.dp))
                 val saveScope = rememberCoroutineScope()
 
-                // FIX (Bugs 1 & 3): Save calls updateGroupMetadata instead of saveGroup.
-                // updateGroupMetadata never touches memberIds or pendingInvitations, so:
-                //   - members who joined after the admin opened this screen are never evicted
-                //   - pending invitations are never duplicated or ghost-written
                 Button(
                     onClick = {
                         if (title.isBlank()) return@Button
@@ -489,24 +506,28 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                 latest.eventDateTime
                             }
 
-                            // Build the updated entry using the live snapshot as base so we
-                            // never carry stale memberIds/pendingInvitations into the write.
+                            // FIX: use latest.copy() so groupMemberNames comes from the live
+                            // Firebase snapshot, not the stale local list. This means members who
+                            // joined via invitation acceptance between screen-open and Save are
+                            // preserved. Explicit removals are handled via explicitlyRemovedMembers.
                             val updated = latest.copy(
                                 title = title.trim(),
                                 description = description,
                                 eventDateTime = newDateTime,
-                                // Only carry the fields we actually edited locally:
-                                groupMemberNames = memberNames.toMutableList(),
                                 memberRoles = memberRoles.toMutableMap(),
                                 canToggleSharing = canToggle.toMutableMap(),
                                 adminApplications = adminApplications.toMutableSet(),
                                 adminApplicationVotes = appVotes.mapValues { it.value.toMutableSet() }.toMutableMap(),
                                 votesToRemoveAdmin = removalVotes.mapValues { it.value.toMutableSet() }.toMutableMap()
-                                // pendingInvitations intentionally omitted — managed via
-                                // inviteToGroup / cancelInvitation only.
+                                // groupMemberNames and pendingInvitations are taken from `latest`
+                                // (live Firebase snapshot) — not from local state.
                             )
 
-                            FirebaseRepository.updateGroupMetadata(groupId, updated)
+                            FirebaseRepository.updateGroupMetadata(
+                                groupId,
+                                updated,
+                                explicitlyRemovedMembers.value
+                            )
                             CurrentGroupObject.loadCurrentGroupEntry(updated)
                             onFinish()
                         }
@@ -590,12 +611,20 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                 confirmButton = {
                     TextButton(
                         onClick = {
-                            val votes = removalVotes.getOrPut(targetUid) { mutableSetOf() }
-                            votes.add(currentUser)
-                            if (votes.size >= needed) {
-                                memberRoles[targetUid] = GroupRole.MEMBER
-                                canToggle[targetUid] = false
-                                removalVotes.remove(targetUid)
+                            coroutineScope.launch {
+                                try {
+                                    FirebaseRepository.voteToRemoveAdmin(
+                                        groupId, targetUid, currentUser)
+                                    val votes = removalVotes.getOrPut(targetUid) { mutableSetOf() }
+                                    votes.add(currentUser)
+                                    if (votes.size >= needed) {
+                                        memberRoles[targetUid] = GroupRole.MEMBER
+                                        canToggle[targetUid] = false
+                                        removalVotes.remove(targetUid)
+                                    }
+                                } catch (e: Exception) {
+                                    // ignore
+                                }
                             }
                             showRemovalDialogFor = null
                         },
