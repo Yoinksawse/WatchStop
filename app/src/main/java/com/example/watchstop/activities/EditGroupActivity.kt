@@ -34,8 +34,11 @@ import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.data.CurrentGroupObject
 import com.example.watchstop.data.UserGeofencesDatabase
-import com.example.watchstop.model.GroupEntry
 import com.example.watchstop.model.GroupRole
+import com.example.watchstop.view.screens.ADMIN_ROLE_COLOUR
+import com.example.watchstop.view.screens.MEMBER_ROLE_COLOUR
+import com.example.watchstop.view.screens.NICEGREEN_COLOUR
+import com.example.watchstop.view.screens.SUPERADMIN_ROLE_COLOUR
 import com.example.watchstop.view.ui.theme.CarbonGrey
 import com.example.watchstop.view.ui.theme.ElectricYellow
 import com.example.watchstop.view.ui.theme.Purple40
@@ -63,29 +66,30 @@ class EditGroupActivity : AppCompatActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EditGroupScreen(onFinish: () -> Unit) {
-    val snapshot = remember { CurrentGroupObject.getCurrentGroupEntry() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    var title by remember { mutableStateOf(snapshot.title) }
-    var description by remember { mutableStateOf(snapshot.description) }
-    var day by remember { mutableStateOf(snapshot.eventDateTime.dayOfMonth.toString()) }
-    var month by remember { mutableStateOf(snapshot.eventDateTime.monthValue.toString()) }
-    var year by remember { mutableStateOf(snapshot.eventDateTime.year.toString()) }
+    val groupSnapshot = remember { CurrentGroupObject.getCurrentGroupEntry() }
+    val groupId = CurrentGroupObject.getCurrentGroupId()
+    var title by remember { mutableStateOf(groupSnapshot.title) }
+    var description by remember { mutableStateOf(groupSnapshot.description) }
+    var day by remember { mutableStateOf(groupSnapshot.eventDateTime.dayOfMonth.toString()) }
+    var month by remember { mutableStateOf(groupSnapshot.eventDateTime.monthValue.toString()) }
+    var year by remember { mutableStateOf(groupSnapshot.eventDateTime.year.toString()) }
     val timePickerState = rememberTimePickerState(
-        initialHour = snapshot.eventDateTime.hour,
-        initialMinute = snapshot.eventDateTime.minute
+        initialHour = groupSnapshot.eventDateTime.hour,
+        initialMinute = groupSnapshot.eventDateTime.minute
     )
     var showInfoDialog by remember { mutableStateOf(false) }
     var showNoGeofenceDialog by remember { mutableStateOf(false) }
     var selectedGeofenceId by remember { //initialise from group current geofence
-        mutableStateOf(snapshot.geofence?.id ?: "")
+        mutableStateOf(groupSnapshot.geofence?.id ?: "")
     }
 
-    val memberNames = remember { mutableStateListOf(*snapshot.groupMemberNames.toTypedArray()) }
-    val groupId = CurrentGroupObject.getCurrentGroupId()
+    val initialMemberNames = groupSnapshot.groupMemberNames.toTypedArray()
+    val memberNames = remember { mutableStateListOf(*groupSnapshot.groupMemberNames.toTypedArray()) }
 
     // track members the admin explicitly removed via the Remove button.
     // updateGroupMetadata receives ONLY this set and nulls out exactly those UIDs.
@@ -103,18 +107,18 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
         }
     }
 
-    val memberRoles = remember { mutableStateMapOf<String, GroupRole>().apply { putAll(snapshot.memberRoles) } }
-    val sharingEnabled = remember { mutableStateMapOf<String, Boolean>().apply { putAll(snapshot.locationSharingEnabled) } }
-    val canToggle = remember { mutableStateMapOf<String, Boolean>().apply { putAll(snapshot.canToggleSharing) } }
-    val adminApplications = remember { mutableStateListOf(*snapshot.adminApplications.toTypedArray()) }
+    val memberRoles = remember { mutableStateMapOf<String, GroupRole>().apply { putAll(groupSnapshot.memberRoles) } }
+    val sharingEnabled = remember { mutableStateMapOf<String, Boolean>().apply { putAll(groupSnapshot.locationSharingEnabled) } }
+    val canToggle = remember { mutableStateMapOf<String, Boolean>().apply { putAll(groupSnapshot.canToggleSharing) } }
+    val adminApplications = remember { mutableStateListOf(*groupSnapshot.adminApplications.toTypedArray()) }
     val appVotes = remember {
         mutableStateMapOf<String, MutableSet<String>>().apply {
-            snapshot.adminApplicationVotes.forEach { (k, v) -> put(k, v.toMutableSet()) }
+            groupSnapshot.adminApplicationVotes.forEach { (k, v) -> put(k, v.toMutableSet()) }
         }
     }
     val removalVotes = remember {
         mutableStateMapOf<String, MutableSet<String>>().apply {
-            snapshot.votesToRemoveAdmin.forEach { (k, v) -> put(k, v.toMutableSet()) }
+            groupSnapshot.votesToRemoveAdmin.forEach { (k, v) -> put(k, v.toMutableSet()) }
         }
     }
 
@@ -125,7 +129,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
 
     val accentColor = Color(0xFF007AFF)
     val destructiveColor = Color(0xFFFF3B30)
-    val successColor = Color(0xFF34C759)
+    val successColor = NICEGREEN_COLOUR
     val secondaryText = if (darkmode) Color(0xFF8E8E93) else Color(0xFF636366)
     val outlineColor = if (darkmode) ElectricYellow else SlateGrey
     val buttonBorder = BorderStroke(1.dp, outlineColor.copy(alpha = 0.6f))
@@ -206,7 +210,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                     onClick = { showInfoDialog = true },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = accentColor)
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
                     Icon(Icons.Default.Edit, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
@@ -240,11 +244,13 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                             onClick = {
                                 searchScope.launch {
                                     isSearching = true; searchError = ""; searchResult = null
-                                    val result = FirebaseRepository.findUserByUsernameOrEmail(searchQuery.trim())
+                                    val result = FirebaseRepository.findUserByUsernameOrEmail(
+                                        searchQuery.trim()
+                                    )
                                     when {
                                         result == null ->
                                             searchError = "User not found"
-                                        memberNames.contains(result.first) ->
+                                        initialMemberNames.contains(result.first) ->
                                             searchError = "Already a member of this group"
                                         pendingInvitations.contains(result.first) ->
                                             searchError = "Invite already pending"
@@ -336,9 +342,9 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                         text = role.displayName,
                                         fontSize = 11.sp,
                                         color = when (role) {
-                                            GroupRole.SUPER_ADMIN -> Color(0xFFFFCC00)
-                                            GroupRole.ADMIN -> accentColor
-                                            GroupRole.MEMBER -> MaterialTheme.colorScheme.onSurfaceVariant
+                                            GroupRole.SUPER_ADMIN -> SUPERADMIN_ROLE_COLOUR
+                                            GroupRole.ADMIN -> ADMIN_ROLE_COLOUR
+                                            GroupRole.MEMBER -> MEMBER_ROLE_COLOUR
                                         }
                                     )
                                 }

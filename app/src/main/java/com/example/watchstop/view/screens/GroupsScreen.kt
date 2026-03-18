@@ -31,12 +31,20 @@ import com.example.watchstop.model.GroupRole
 import com.example.watchstop.data.FirebaseRepository
 import com.example.watchstop.data.NotificationItem
 import com.example.watchstop.view.GroupCard
+import com.example.watchstop.view.ui.theme.NeonLime
+import com.example.watchstop.view.ui.theme.AndroidPurple
+import com.example.watchstop.view.ui.theme.SlateGrey
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
+
+val SUPERADMIN_ROLE_COLOUR = Color(0xFF007AFF)
+val ADMIN_ROLE_COLOUR = Color(0xFF007AFF)
+val MEMBER_ROLE_COLOUR = SlateGrey
+val NICEGREEN_COLOUR = Color(0xFF34C759)
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -78,10 +86,10 @@ fun GroupsScreen() {
         Scaffold(
             topBar = {
                 Column {
-                    TabRow(
+                    SecondaryTabRow(
                         selectedTabIndex = selectedTabIndex,
                         containerColor = if (darkmode) Color(0xFF121212) else Color.White,
-                        contentColor = Color(0xFF007AFF),
+                        contentColor = MaterialTheme.colorScheme.primary,
                         divider = {}
                     ) {
                         tabs.forEachIndexed { index, title ->
@@ -307,7 +315,7 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
                 }
                 val iconColor = when (item) {
                     is NotificationItem.Invitation -> Color(0xFF007AFF)
-                    is NotificationItem.AdminApplication -> Color(0xFF34C759)
+                    is NotificationItem.AdminApplication -> NICEGREEN_COLOUR
                     is NotificationItem.RemovalVote -> Color(0xFFFF3B30)
                 }
                 Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(20.dp))
@@ -350,7 +358,7 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
                         Button(
                             onClick = { appScope.launch { FirebaseRepository.acceptInvitation(item.groupId) } },
                             modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34C759))
+                            colors = ButtonDefaults.buttonColors(containerColor = NICEGREEN_COLOUR)
                         ) { Text("Accept") }
                         OutlinedButton(
                             onClick = { appScope.launch { FirebaseRepository.declineInvitation(item.groupId) } },

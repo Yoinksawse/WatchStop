@@ -17,6 +17,7 @@ val ElectricYellow = Color(0xFFFFF176)
 val SpaceGrey = Color(0xFF121212)
 val CarbonGrey = Color(0xFF1E1E1E)
 val SlateGrey = Color(0xFF2C2C2C)
+val AndroidPurple = Purple40
 private val DarkColorScheme = darkColorScheme(
     primary = NeonLime,
     onPrimary = Color.Black,
@@ -38,7 +39,7 @@ private val DarkColorScheme = darkColorScheme(
     onSurfaceVariant = Color.LightGray
 )
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
+    primary = AndroidPurple,
     secondary = PurpleGrey40,
     tertiary = Pink40,
 

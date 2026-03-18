@@ -30,7 +30,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.watchstop.activities.ARRIVED_COLOUR
 import com.example.watchstop.activities.EditGroupActivity
+import com.example.watchstop.activities.INACTIVE_COLOUR
+import com.example.watchstop.activities.TRAVELLING_COLOUR
 import com.example.watchstop.activities.ViewGroupMapActivity
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.data.UserProfileObject.darkmode
@@ -39,6 +42,10 @@ import com.example.watchstop.model.GroupEntry
 import com.example.watchstop.model.GroupRole
 import com.example.watchstop.model.TripStatus
 import com.example.watchstop.data.FirebaseRepository
+import com.example.watchstop.view.screens.ADMIN_ROLE_COLOUR
+import com.example.watchstop.view.screens.MEMBER_ROLE_COLOUR
+import com.example.watchstop.view.screens.NICEGREEN_COLOUR
+import com.example.watchstop.view.screens.SUPERADMIN_ROLE_COLOUR
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter
@@ -107,8 +114,7 @@ fun GroupCard(
     val secondaryText = if (darkmode) Color(0xFF8E8E93) else Color(0xFF636366)
     val accentColor = Color(0xFF007AFF)
     val destructiveColor = Color(0xFFFF3B30)
-    val successColor = Color(0xFF34C759)
-    val warningColor = Color(0xFFFF9500)
+    val successColor = NICEGREEN_COLOUR
 
     WatchStopTheme(darkTheme = darkmode) {
         Card(
@@ -150,9 +156,9 @@ fun GroupCard(
                                 text = userRole.displayName,
                                 fontSize = 11.sp,
                                 color = when (userRole) {
-                                    GroupRole.SUPER_ADMIN -> Color(0xFFFFCC00)
-                                    GroupRole.ADMIN -> accentColor
-                                    GroupRole.MEMBER -> secondaryText
+                                    GroupRole.SUPER_ADMIN -> SUPERADMIN_ROLE_COLOUR
+                                    GroupRole.ADMIN -> ADMIN_ROLE_COLOUR
+                                    GroupRole.MEMBER -> MEMBER_ROLE_COLOUR
                                 },
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -175,9 +181,9 @@ fun GroupCard(
                                     text = userRole.displayName,
                                     fontSize = 11.sp,
                                     color = when (userRole) {
-                                        GroupRole.SUPER_ADMIN -> Color(0xFFFFCC00)
-                                        GroupRole.ADMIN -> accentColor
-                                        GroupRole.MEMBER -> secondaryText
+                                        GroupRole.SUPER_ADMIN -> SUPERADMIN_ROLE_COLOUR
+                                        GroupRole.ADMIN -> ADMIN_ROLE_COLOUR
+                                        GroupRole.MEMBER -> MEMBER_ROLE_COLOUR
                                     },
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -249,7 +255,7 @@ fun GroupCard(
                         Icon(
                             imageVector = Icons.Default.LocationOn,
                             contentDescription = null,
-                            tint = accentColor,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
@@ -358,9 +364,9 @@ fun GroupCard(
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = when (status) {
-                                        TripStatus.TRAVELLING -> warningColor
-                                        TripStatus.ARRIVED -> successColor
-                                        TripStatus.INACTIVE -> secondaryText
+                                        TripStatus.TRAVELLING -> TRAVELLING_COLOUR
+                                        TripStatus.ARRIVED -> ARRIVED_COLOUR
+                                        TripStatus.INACTIVE -> INACTIVE_COLOUR
                                     }
                                 )
                             }
@@ -370,9 +376,9 @@ fun GroupCard(
                                 text = memberRole.displayName,
                                 fontSize = 11.sp,
                                 color = when (memberRole) {
-                                    GroupRole.SUPER_ADMIN -> Color(0xFFFFCC00)
-                                    GroupRole.ADMIN -> accentColor
-                                    GroupRole.MEMBER -> secondaryText
+                                    GroupRole.SUPER_ADMIN -> SUPERADMIN_ROLE_COLOUR
+                                    GroupRole.ADMIN -> ADMIN_ROLE_COLOUR
+                                    GroupRole.MEMBER -> MEMBER_ROLE_COLOUR
                                 }
                             )
 
@@ -550,7 +556,6 @@ fun GroupCard(
                         ) {
                             Text("Admin application pending", fontSize = 12.sp,
                                 color = accentColor, fontWeight = FontWeight.Bold)
-                            Text("$voteCount / $needed votes", fontSize = 12.sp, color = accentColor)
                         }
                     }
 

@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import com.example.watchstop.data.UserGeofencesDatabase
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.model.GeoAlarm
+import com.example.watchstop.view.screens.NICEGREEN_COLOUR
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import java.time.format.DateTimeFormatter
 
@@ -77,14 +78,14 @@ fun GeoAlarmCard(
                             modifier = Modifier
                                 .border(
                                     width = 1.dp,
-                                    color = if (alarm.active) Color.Green else Color.Red,
+                                    color = if (alarm.active) NICEGREEN_COLOUR else Color.Red,
                                     shape = RoundedCornerShape(12.dp)
                                 )
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) {
                             Text(
                                 text = if (alarm.active) "Active" else "Inactive",
-                                color = if (alarm.active) Color.Green else Color.Red,
+                                color = if (alarm.active) NICEGREEN_COLOUR else Color.Red,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold
                             )

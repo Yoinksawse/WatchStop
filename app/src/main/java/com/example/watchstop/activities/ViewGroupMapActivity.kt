@@ -32,6 +32,10 @@ import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.model.GroupRole
 import com.example.watchstop.model.TripStatus
+import com.example.watchstop.view.screens.ADMIN_ROLE_COLOUR
+import com.example.watchstop.view.screens.MEMBER_ROLE_COLOUR
+import com.example.watchstop.view.screens.NICEGREEN_COLOUR
+import com.example.watchstop.view.screens.SUPERADMIN_ROLE_COLOUR
 import com.example.watchstop.view.ui.theme.MapStyles.DARK_MAP_STYLE
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -43,6 +47,11 @@ import com.google.maps.android.compose.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+
+
+var TRAVELLING_COLOUR = Color(0xFFFF9500)
+var ARRIVED_COLOUR = NICEGREEN_COLOUR
+var INACTIVE_COLOUR = Color(0xFF8E8E93)
 class ViewGroupMapActivity : AppCompatActivity() {
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -391,15 +400,15 @@ private fun MemberListItemInline(
     status: TripStatus
 ) {
     val roleColor = when (role) {
-        GroupRole.SUPER_ADMIN -> Color(0xFFFFCC00)
-        GroupRole.ADMIN -> Color(0xFF007AFF)
-        GroupRole.MEMBER -> Color(0xFF8E8E93)
+        GroupRole.SUPER_ADMIN -> SUPERADMIN_ROLE_COLOUR
+        GroupRole.ADMIN -> ADMIN_ROLE_COLOUR
+        GroupRole.MEMBER -> MEMBER_ROLE_COLOUR
     }
 
     val statusColor = when (status) {
-        TripStatus.TRAVELLING -> Color(0xFFFF9500)
-        TripStatus.ARRIVED -> Color(0xFF34C759)
-        TripStatus.INACTIVE -> Color(0xFF8E8E93)
+        TripStatus.TRAVELLING -> TRAVELLING_COLOUR
+        TripStatus.ARRIVED -> ARRIVED_COLOUR
+        TripStatus.INACTIVE -> INACTIVE_COLOUR
     }
 
     val statusText = when (status) {
