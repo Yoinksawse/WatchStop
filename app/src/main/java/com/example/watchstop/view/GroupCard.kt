@@ -6,8 +6,10 @@ import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.watchstop.activities.EditGroupActivity
@@ -68,6 +71,9 @@ fun GroupCard(
     }
     val canToggle = remember { mutableStateMapOf<String, Boolean>().apply { putAll(snapshot.canToggleSharing) } }
 
+    // Expansion state for description
+    var expanded by remember { mutableStateOf(false) }
+    var isDescriptionOverflowing by remember { mutableStateOf(false) }
 
     // Does this group have any super admin besides the current user?
     val hasSuperAdmin = groupEntryParameter.memberRoles.any { (uid, role) ->
@@ -105,6 +111,7 @@ fun GroupCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 6.dp, horizontal = 16.dp)
+                .animateContentSize()
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
 
@@ -174,7 +181,8 @@ fun GroupCard(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // ── Date / Time Tags ────────────────────────────────────────
+                // ── Date / Time Section ─────────────────────────────────────
+                MiniHeader("Event date & Time", secondaryText)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SketchTag(group.eventDateTime.format(
                         DateTimeFormatter.ofPattern("dd MMM yyyy")))
@@ -182,9 +190,60 @@ fun GroupCard(
                         DateTimeFormatter.ofPattern("HH:mm 'hrs'")))
                 }
 
+                // ── Description (Expandable) ────────────────────────────────
+                MiniHeader("Group/Event Description", secondaryText)
+                if (group.description.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                color = secondaryText.copy(alpha = 0.05f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .border(
+                                width = 0.5.dp,
+                                color = secondaryText.copy(alpha = 0.1f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .clickable(enabled = isDescriptionOverflowing || expanded) {
+                                expanded = !expanded
+                            }
+                            .padding(12.dp)
+                    ) {
+                        Column {
+                            Text(
+                                text = group.description,
+                                fontSize = 14.sp,
+                                color = primaryText.copy(alpha = 0.9f),
+                                maxLines = if (expanded) Int.MAX_VALUE else 1,
+                                overflow = TextOverflow.Ellipsis,
+                                onTextLayout = { textLayoutResult ->
+                                    if (!expanded) {
+                                        isDescriptionOverflowing = textLayoutResult.hasVisualOverflow
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            if (isDescriptionOverflowing || expanded) {
+                                Text(
+                                    text = if (expanded) "Tap to retract" else "Tap to expand",
+                                    fontSize = 11.sp,
+                                    color = secondaryText,
+                                    modifier = Modifier
+                                        .align(Alignment.End)
+                                        .padding(top = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // ── Member List with Status Dashboard ──────────────────────
+                MiniHeader("Members", secondaryText)
                 group.groupMemberNames.forEach { memberUid ->
                     val memberRole = group.memberRoles[memberUid] ?: GroupRole.MEMBER
                     val isSharing = group.locationSharingEnabled[memberUid] ?: false
@@ -309,9 +368,11 @@ fun GroupCard(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // ── Action Buttons Row ──────────────────────────────────────
+                // ── Locations Section ───────────────────────────────────────
+                MiniHeader("Locations", secondaryText)
+
                 val isSharing = group.locationSharingEnabled[currentUid] ?: false
                 val canCurrentToggle = group.canToggleSharing[currentUid] ?: false
                 val currentStatus = group.tripStatus[currentUid] ?: TripStatus.INACTIVE
@@ -333,11 +394,6 @@ fun GroupCard(
                                     try {
                                         FirebaseRepository.toggleLocationSharing(
                                             groupId, currentUid, !isSharing)
-                                        // Update local state only — toggleLocationSharing writes
-                                        // directly to locationSharingEnabled/$uid which the user
-                                        // can write (canToggleSharing === true). Do NOT call
-                                        // onEdited here: updateGroupMetadata requires admin and
-                                        // would crash any member with sharing permission.
                                         val updated = GroupEntry(group)
                                         updated.setSharing(currentUid, !isSharing)
                                         group = updated
@@ -361,10 +417,6 @@ fun GroupCard(
                                 TripStatus.ARRIVED -> TripStatus.INACTIVE
                             }
                             coroutineScope.launch {
-                                // setTripStatus writes to tripStatus/$uid (member can write own)
-                                // and locationSharingEnabled/$uid (allowed when canToggleSharing
-                                // or travelling). Do NOT call onEdited — updateGroupMetadata
-                                // requires admin and crashes any plain member or applicant.
                                 FirebaseRepository.setTripStatus(groupId, currentUid, next)
                                 val updated = GroupEntry(group)
                                 updated.setTripStatus(currentUid, next)
@@ -372,9 +424,18 @@ fun GroupCard(
                             }
                         }
                     )
+                    
+                    // Show Map button (currently doing nothing)
+                    SketchButton(
+                        text = "Show Map",
+                        onClick = { /* TODO: Implement map view logic */ }
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // ── Management Section ──────────────────────────────────────
+                MiniHeader("Management", secondaryText)
 
                 // Manage group (admins) or Apply for admin (members)
                 if (isAdmin) {
@@ -390,9 +451,6 @@ fun GroupCard(
                         text = "Apply for Admin",
                         onClick = {
                             coroutineScope.launch {
-                                // applyForAdmin writes directly to adminApplications/$uid
-                                // which the rule allows for any member. Do NOT call onEdited —
-                                // updateGroupMetadata requires admin and crashes members.
                                 FirebaseRepository.applyForAdmin(groupId, currentUid)
                                 val updated = GroupEntry(group)
                                 updated.applyForAdmin(currentUid)
@@ -573,8 +631,7 @@ fun GroupCard(
                         Spacer(modifier = Modifier.height(10.dp))
                         HorizontalDivider(color = Color.Gray.copy(alpha = 0.3f))
                         Spacer(modifier = Modifier.height(6.dp))
-                        Text("Pending Admin Applications", fontSize = 12.sp,
-                            color = secondaryText, fontWeight = FontWeight.SemiBold)
+                        MiniHeader("Pending Admin Applications", secondaryText)
 
                         pending.forEach { applicantUid ->
                             val voteCount = group.adminApplicationVoteCount(applicantUid)
@@ -630,6 +687,17 @@ fun GroupCard(
 }
 
 // ── Shared small components ──────────────────────────────────────────────────
+
+@Composable
+fun MiniHeader(text: String, color: Color) {
+    Text(
+        text = text,
+        fontSize = 12.sp,
+        color = color,
+        fontWeight = FontWeight.SemiBold
+    )
+    Spacer(modifier = Modifier.height(6.dp))
+}
 
 @Composable
 fun SketchTag(text: String, color: Color = Color.Gray) {

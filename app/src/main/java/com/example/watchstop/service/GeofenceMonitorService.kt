@@ -141,7 +141,7 @@ class GeofenceMonitorService : Service() {
         }
     }
 
-    // ── Live Location Push to Groups ──────────────────────────────────────
+// ── Live Location Push to Groups ──────────────────────────────────────
 
     /**
      * Reads the groups node directly, filtering to groups where:
@@ -150,40 +150,66 @@ class GeofenceMonitorService : Service() {
      * Uses UID throughout — consistent with the rest of the app.
      */
     private fun pushLiveLocationToGroups(location: Location) {
-        // Use Firebase Auth UID — consistent with how groups store memberIds
-        val uid = FirebaseRepository.currentUid ?: return
+        val uid = FirebaseRepository.currentUid ?: run {
+            Log.w("GeofenceService", "pushLiveLocation skipped: No authenticated user")
+            return
+        }
+
+        Log.d("GeofenceService", "pushLiveLocation: Starting for uid=$uid, lat=${location.latitude}, lng=${location.longitude}")
 
         serviceScope.launch {
             try {
+                // Step 1: Get list of group IDs from user's index
                 FirebaseDatabase.getInstance().reference
-                    .child("groups")
+                    .child("users").child(uid).child("groups")
                     .get()
-                    .addOnSuccessListener { snapshot ->
-                        snapshot.children.forEach { groupSnap ->
-                            val groupId = groupSnap.key ?: return@forEach
-                            val isMember = groupSnap.child("memberIds")
-                                .child(uid).exists()
-                            if (!isMember) return@forEach
+                    .addOnSuccessListener { userGroupsSnap ->
+                        val groupCount = userGroupsSnap.childrenCount
+                        Log.d("GeofenceService", "pushLiveLocation: Found $groupCount groups for user")
 
-                            val isSharing = groupSnap.child("locationSharingEnabled")
-                                .child(uid).getValue(Boolean::class.java) ?: false
-                            if (isSharing) {
-                                FirebaseRepository.pushLocation(
-                                    groupId, uid,
-                                    location.latitude, location.longitude
-                                )
-                            }
+                        if (groupCount == 0L) {
+                            Log.d("GeofenceService", "pushLiveLocation: User has no groups, skipping")
+                            return@addOnSuccessListener
+                        }
+
+                        userGroupsSnap.children.forEach { groupIndexSnap ->
+                            val groupId = groupIndexSnap.key ?: return@forEach
+
+                            // Step 2: Read each group individually
+                            FirebaseDatabase.getInstance().reference
+                                .child("groups").child(groupId)
+                                .get()
+                                .addOnSuccessListener { groupSnap ->
+                                    val isSharing = groupSnap
+                                        .child("locationSharingEnabled")
+                                        .child(uid)
+                                        .getValue(Boolean::class.java) ?: false
+
+                                    Log.d("GeofenceService", "pushLiveLocation: Group $groupId - sharing=$isSharing")
+
+                                    if (isSharing) {
+                                        FirebaseRepository.pushLocation(
+                                            groupId, uid,
+                                            location.latitude, location.longitude
+                                        )
+                                        Log.i("GeofenceService", "✓ Location pushed to group $groupId: (${location.latitude}, ${location.longitude})")
+                                    } else {
+                                        Log.d("GeofenceService", "pushLiveLocation: Sharing disabled for group $groupId, skipping")
+                                    }
+                                }
+                                .addOnFailureListener { e ->
+                                    Log.w("GeofenceService", "pushLiveLocation: Failed to read group $groupId: ${e.message}")
+                                }
                         }
                     }
                     .addOnFailureListener { e ->
-                        Log.w("GeofenceService", "pushLiveLocation failed: ${e.message}")
+                        Log.w("GeofenceService", "pushLiveLocation: Failed to read user groups: ${e.message}")
                     }
             } catch (e: Exception) {
                 Log.e("GeofenceService", "pushLiveLocationToGroups error", e)
             }
         }
     }
-
     // ── Geofence Math ─────────────────────────────────────────────────────
 
     private fun isPointInGeofence(point: LatLng, geofence: GeofenceArea): Boolean {

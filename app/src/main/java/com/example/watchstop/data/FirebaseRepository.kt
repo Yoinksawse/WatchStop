@@ -325,28 +325,21 @@ object FirebaseRepository {
             return
         }
 
-        val groupRef = db.child("groups").child(groupId)
+        val currentCount = entry.memberCount
 
-        db.child("groupLocations").child(groupId).child(uid).removeValue().await()
-        groupRef.child("memberIds").child(uid).removeValue().await()
+        // Batch ALL updates into a single atomic write
+        val updates = mutableMapOf<String, Any?>(
+            "groups/$groupId/memberIds/$uid" to null,
+            "groups/$groupId/memberRoles/$uid" to null,
+            "groups/$groupId/locationSharingEnabled/$uid" to null,
+            "groups/$groupId/canToggleSharing/$uid" to null,
+            "groups/$groupId/tripStatus/$uid" to null,
+            "groups/$groupId/memberCount" to maxOf(0, currentCount - 1),
+            "groupLocations/$groupId/$uid" to null,
+            "users/$uid/groups/$groupId" to null
+        )
 
-        try {
-            groupRef.child("memberRoles").child(uid).removeValue().await()
-        } catch (e: DatabaseException) {
-            Log.w("FirebaseRepository", "Could not remove role: ${e.message}")
-        }
-
-        groupRef.child("locationSharingEnabled").child(uid).removeValue().await()
-        groupRef.child("canToggleSharing").child(uid).removeValue().await()
-        groupRef.child("tripStatus").child(uid).removeValue().await()
-
-        db.child("users").child(uid).child("groups").child(groupId).removeValue().await()
-
-        // FIX: decrement memberCount
-        val currentCount = groupRef.child("memberCount").get().await()
-            .getValue(Int::class.java) ?: (remainingMembers.size + 1)
-        groupRef.child("memberCount").setValue(maxOf(0, currentCount - 1)).await()
-
+        db.updateChildren(updates).await()
         Log.d("FirebaseRepository", "leaveGroup: $uid left group $groupId")
     }
 
