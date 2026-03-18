@@ -29,7 +29,8 @@ data class GroupEntry(
     // New counter fields for security rules
     var memberCount: Int = 0,
     val voteCountsToRemoveAdmin: MutableMap<String, Int> = mutableMapOf(),
-    var removalAbstentions: MutableMap<String, MutableSet<String>> = mutableMapOf()
+    var removalAbstentions: MutableMap<String, MutableSet<String>> = mutableMapOf(),
+    var geofence: GeofenceArea? = null
 ) {
     /** Deep-copy constructor */
     constructor(other: GroupEntry) : this(
@@ -48,7 +49,8 @@ data class GroupEntry(
         votesToRemoveAdmin = other.votesToRemoveAdmin
             .mapValues { it.value.toMutableSet() }.toMutableMap(),
         memberCount = other.memberCount,
-        voteCountsToRemoveAdmin = other.voteCountsToRemoveAdmin.toMutableMap()
+        voteCountsToRemoveAdmin = other.voteCountsToRemoveAdmin.toMutableMap(),
+        geofence = other.geofence?.copy()
     )
 
     // ─── Member Management ─────────────────────────────────────────────────

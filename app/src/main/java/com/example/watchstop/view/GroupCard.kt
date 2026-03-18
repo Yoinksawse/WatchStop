@@ -232,8 +232,6 @@ fun GroupCard(
 
                 // ── Detailed Content (only visible when expanded) ───────────
                 if (isExpanded) {
-                    Spacer(modifier = Modifier.height(12.dp))
-
                     // ── Date / Time Section ─────────────────────────────────────
                     MiniHeader("Event date & Time", secondaryText)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -242,11 +240,30 @@ fun GroupCard(
                         SketchTag(group.eventDateTime.format(
                             DateTimeFormatter.ofPattern("HH:mm 'hrs'")))
                     }
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // ── Geofence Name display ─────────────────────────────────────
+                    MiniHeader("Geofence", secondaryText)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = group.geofence?.name ?: "No Geofence",
+                            fontSize = 12.sp,
+                            color = secondaryText,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     // ── Description (Expandable) ────────────────────────────────
                     MiniHeader("Group/Event Description", secondaryText)
                     if (group.description.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(10.dp))
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()

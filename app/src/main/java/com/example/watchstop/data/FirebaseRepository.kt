@@ -23,6 +23,7 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 import android.widget.Toast
+import com.google.android.gms.maps.model.LatLng
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -146,6 +147,20 @@ object FirebaseRepository {
             updates["users/$invitedUid/invitations/$id"] = true
         }
 
+        //geofence update
+        if (group.geofence != null) {
+            val gf = group.geofence!!
+            updates["groups/$id/geofence"] = mapOf(
+                "id" to gf.id,
+                "name" to gf.name,
+                "center" to mapOf("lat" to gf.center.latitude, "lng" to gf.center.longitude),
+                "typeId" to gf.typeId,
+                "radius" to gf.radius,
+                "points" to gf.points.map { mapOf("lat" to it.latitude, "lng" to it.longitude) },
+                "geoAlarmId" to gf.geoAlarmId
+            )
+        }
+
         db.updateChildren(updates).await()
         Log.d("FirebaseRepository", "saveGroup SUCCESS id=$id")
         return id
@@ -186,7 +201,18 @@ object FirebaseRepository {
             "votesToRemoveAdmin" to group.votesToRemoveAdmin
                 .mapValues { it.value.associateWith { true } },
             // FIX: keep memberCount in sync whenever metadata is saved
-            "memberCount"           to group.groupMemberNames.size
+            "memberCount"           to group.groupMemberNames.size,
+            "geofence" to group.geofence?.let { gf ->
+                mapOf(
+                    "id" to gf.id,
+                    "name" to gf.name,
+                    "center" to mapOf("lat" to gf.center.latitude, "lng" to gf.center.longitude),
+                    "typeId" to gf.typeId,
+                    "radius" to gf.radius,
+                    "points" to gf.points.map { mapOf("lat" to it.latitude, "lng" to it.longitude) },
+                    "geoAlarmId" to gf.geoAlarmId
+                )
+            }
         )
 
         // Instead of updating the entire maps, update each child individually
@@ -914,6 +940,59 @@ object FirebaseRepository {
         database.child(userId).child(key).removeValue()
         Toast.makeText(context, "Geofence Deleted from Cloud", Toast.LENGTH_SHORT).show()
     }
+
+    // ── Group Geofence ─────────────────────────────────────────────────────
+
+    /**
+     * Set or update the group's geofence. Only Admins/SuperAdmins can call this.
+     */
+    suspend fun setGroupGeofence(groupId: String, geofence: GeofenceArea?) {
+        ensureAuth()
+        val groupRef = db.child("groups").child(groupId).child("geofence")
+
+        if (geofence == null) {
+            groupRef.removeValue().await()
+            Log.d("FirebaseRepository", "removeGroupGeofence: removed geofence from group $groupId")
+        } else {
+            val data = mapOf(
+                "id" to geofence.id,
+                "name" to geofence.name,
+                "center" to mapOf("lat" to geofence.center.latitude, "lng" to geofence.center.longitude),
+                "typeId" to geofence.typeId,
+                "radius" to geofence.radius,
+                "points" to geofence.points.map { mapOf("lat" to it.latitude, "lng" to it.longitude) },
+                "geoAlarmId" to geofence.geoAlarmId
+            )
+            groupRef.setValue(data).await()
+            Log.d("FirebaseRepository", "setGroupGeofence: set geofence for group $groupId")
+        }
+    }
+
+    /**
+     * Remove the group's geofence. Only Admins/SuperAdmins can call this.
+     */
+    suspend fun removeGroupGeofence(groupId: String) {
+        ensureAuth()
+        db.child("groups").child(groupId).child("geofence").removeValue().await()
+        Log.d("FirebaseRepository", "removeGroupGeofence: removed geofence from group $groupId")
+    }
+
+    /**
+     * Observe the group's geofence.
+     */
+    fun observeGroupGeofence(groupId: String): Flow<GeofenceArea?> = callbackFlow {
+        val ref = db.child("groups").child(groupId).child("geofence")
+        val listener = ref.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                trySend(snapshot.toGeofenceArea())
+            }
+            override fun onCancelled(error: DatabaseError) {
+                Log.w("FirebaseRepository", "observeGroupGeofence cancelled: ${error.message}")
+                trySend(null)
+            }
+        })
+        awaitClose { ref.removeEventListener(listener) }
+    }
 }
 
 
@@ -999,6 +1078,8 @@ fun DataSnapshot.toGroupEntry(): GroupEntry? {
     //read persisted memberCount; fall back to live memberIds size
     val memberCount = child("memberCount").getValue(Int::class.java) ?: memberIds.size
 
+    val geofence = child("geofence").toGeofenceArea()
+
     return GroupEntry(
         title = title,
         eventDateTime = dateTime,
@@ -1014,7 +1095,35 @@ fun DataSnapshot.toGroupEntry(): GroupEntry? {
         votesToRemoveAdmin = removalVotes,
         memberCount = memberCount,
         voteCountsToRemoveAdmin = voteCountsToRemoveAdmin,
-        removalAbstentions = removalAbstentions
+        removalAbstentions = removalAbstentions,
+        geofence = geofence
+    )
+}
+
+private fun DataSnapshot.toGeofenceArea(): GeofenceArea? {
+    val id = child("id").getValue(String::class.java) ?: return null
+    val name = child("name").getValue(String::class.java) ?: ""
+    val centerSnap = child("center")
+    val lat = centerSnap.child("lat").getValue(Double::class.java) ?: 0.0
+    val lng = centerSnap.child("lng").getValue(Double::class.java) ?: 0.0
+    val center = LatLng(lat, lng)
+    val typeId = child("typeId").getValue(Int::class.java) ?: 0
+    val radius = child("radius").getValue(Double::class.java) ?: 0.0
+    val points = child("points").children.mapNotNull { pointSnap ->
+        val pLat = pointSnap.child("lat").getValue(Double::class.java) ?: return@mapNotNull null
+        val pLng = pointSnap.child("lng").getValue(Double::class.java) ?: return@mapNotNull null
+        LatLng(pLat, pLng)
+    }
+    val geoAlarmId = child("geoAlarmId").getValue(String::class.java)
+
+    return GeofenceArea(
+        id = id,
+        name = name,
+        center = center,
+        typeId = typeId,
+        radius = radius,
+        points = points,
+        geoAlarmId = geoAlarmId
     )
 }
 

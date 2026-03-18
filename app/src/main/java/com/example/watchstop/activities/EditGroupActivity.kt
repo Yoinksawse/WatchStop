@@ -1,5 +1,6 @@
 package com.example.watchstop.activities
 
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.compose.setContent
@@ -17,10 +18,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -30,10 +33,13 @@ import com.example.watchstop.data.FirebaseRepository
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.data.CurrentGroupObject
+import com.example.watchstop.data.UserGeofencesDatabase
 import com.example.watchstop.model.GroupEntry
 import com.example.watchstop.model.GroupRole
 import com.example.watchstop.view.ui.theme.CarbonGrey
+import com.example.watchstop.view.ui.theme.ElectricYellow
 import com.example.watchstop.view.ui.theme.Purple40
+import com.example.watchstop.view.ui.theme.SlateGrey
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.launch
 
@@ -60,8 +66,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
     val snapshot = remember { CurrentGroupObject.getCurrentGroupEntry() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    // FIX: use rememberCoroutineScope() — NOT import kotlinx.coroutines.coroutineScope which
-    // is a suspend function and cannot be called in a non-suspend click lambda.
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
     var title by remember { mutableStateOf(snapshot.title) }
@@ -74,11 +79,15 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
         initialMinute = snapshot.eventDateTime.minute
     )
     var showInfoDialog by remember { mutableStateOf(false) }
+    var showNoGeofenceDialog by remember { mutableStateOf(false) }
+    var selectedGeofenceId by remember { //initialise from group current geofence
+        mutableStateOf(snapshot.geofence?.id ?: "")
+    }
 
     val memberNames = remember { mutableStateListOf(*snapshot.groupMemberNames.toTypedArray()) }
     val groupId = CurrentGroupObject.getCurrentGroupId()
 
-    // FIX: track members the admin explicitly removed via the Remove button.
+    // track members the admin explicitly removed via the Remove button.
     // updateGroupMetadata receives ONLY this set and nulls out exactly those UIDs.
     // We never diff live Firebase vs local state — that was the root cause of the bug
     // where a member accepting an invitation got evicted when the admin pressed Save.
@@ -118,7 +127,42 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
     val destructiveColor = Color(0xFFFF3B30)
     val successColor = Color(0xFF34C759)
     val secondaryText = if (darkmode) Color(0xFF8E8E93) else Color(0xFF636366)
+    val outlineColor = if (darkmode) ElectricYellow else SlateGrey
+    val buttonBorder = BorderStroke(1.dp, outlineColor.copy(alpha = 0.6f))
+    val buttonContentColor = if (darkmode) Color.White else Color.Black
 
+    //if no geofence selected/created
+    if (showNoGeofenceDialog) {
+        var noGeofences: Boolean = UserGeofencesDatabase.getAllGeofences().isEmpty()
+
+        var actionString =
+            if (noGeofences) "You haven't created any Geofences yet. Create one now?"
+            else "You haven't selected a Geofence."
+        var titleString =
+            if (noGeofences) "No Geofences Found"
+            else "Select a Geofence"
+        AlertDialog(
+            onDismissRequest = { showNoGeofenceDialog = false },
+            title = { Text(titleString) },
+            text = { Text(actionString) },
+            confirmButton = {
+                if (noGeofences) {
+                    TextButton(onClick = {
+                        showNoGeofenceDialog = false
+                        val intent = Intent(context, MapActivity::class.java)
+                        context.startActivity(intent)
+                    }) {
+                        Text("Add Geofence")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNoGeofenceDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -506,10 +550,13 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                 latest.eventDateTime
                             }
 
-                            // FIX: use latest.copy() so groupMemberNames comes from the live
-                            // Firebase snapshot, not the stale local list. This means members who
-                            // joined via invitation acceptance between screen-open and Save are
-                            // preserved. Explicit removals are handled via explicitlyRemovedMembers.
+                            val selectedGeofence = if (selectedGeofenceId.isNotEmpty()) {
+                                UserGeofencesDatabase.getAllGeofences()
+                                    .find { it.id == selectedGeofenceId }
+                            } else {
+                                null
+                            }
+
                             val updated = latest.copy(
                                 title = title.trim(),
                                 description = description,
@@ -518,9 +565,8 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                 canToggleSharing = canToggle.toMutableMap(),
                                 adminApplications = adminApplications.toMutableSet(),
                                 adminApplicationVotes = appVotes.mapValues { it.value.toMutableSet() }.toMutableMap(),
-                                votesToRemoveAdmin = removalVotes.mapValues { it.value.toMutableSet() }.toMutableMap()
-                                // groupMemberNames and pendingInvitations are taken from `latest`
-                                // (live Firebase snapshot) — not from local state.
+                                votesToRemoveAdmin = removalVotes.mapValues { it.value.toMutableSet() }.toMutableMap(),
+                                geofence = selectedGeofence
                             )
 
                             FirebaseRepository.updateGroupMetadata(
@@ -528,6 +574,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                 updated,
                                 explicitlyRemovedMembers.value
                             )
+
                             CurrentGroupObject.loadCurrentGroupEntry(updated)
                             onFinish()
                         }
@@ -580,6 +627,53 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                 confirmButton = { TextButton(onClick = { showTimePickerInternal = false }) { Text("OK") } },
                                 title = { Text("Pick Date & Time") }
                             ) { TimePicker(state = timePickerState) }
+                        }
+
+
+                        // Geofence
+                        var gfExpanded by remember { mutableStateOf(false) }
+                        val selectedGeofenceName =
+                            UserGeofencesDatabase.getAllGeofences()
+                                .find { it.id == selectedGeofenceId }?.name ?: "Select Geofence"
+
+                        Box {
+                            OutlinedButton(
+                                onClick = {
+                                    if (UserGeofencesDatabase.getAllGeofences().isEmpty()) {
+                                        showNoGeofenceDialog = true
+                                    } else {
+                                        gfExpanded = true
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                border = buttonBorder, //use text field border thickness
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = buttonContentColor)
+                            ) {
+                                Text("Geofence: $selectedGeofenceName");
+                                Icon(Icons.Default.ArrowDropDown, null)
+                            }
+                            DropdownMenu(
+                                expanded = gfExpanded,
+                                onDismissRequest = { gfExpanded = false }
+                            ) {
+                                UserGeofencesDatabase.getAllGeofences().forEach { gf ->
+                                    DropdownMenuItem(
+                                        text = { Text(gf.name) },
+                                        onClick = {
+                                            selectedGeofenceId = gf.id;
+                                            gfExpanded = false
+                                        }
+                                    )
+                                }
+
+                                DropdownMenuItem(
+                                    text = { Text(" +  Create New") },
+                                    onClick = {
+                                        val intent = Intent(context, MapActivity::class.java)
+                                        context.startActivity(intent)
+                                    }
+                                )
+                            }
                         }
                     }
                 },
