@@ -128,7 +128,6 @@ object FirebaseRepository {
                 .mapValues { it.value.associateWith { true } },
             "groups/$id/votesToRemoveAdmin"     to group.votesToRemoveAdmin
                 .mapValues { it.value.associateWith { true } },
-            // FIX: persist memberCount and voteCountsToRemoveAdmin
             "groups/$id/memberCount"            to group.groupMemberNames.size,
             "groups/$id/voteCountsToRemoveAdmin" to group.voteCountsToRemoveAdmin
                 .takeIf { it.isNotEmpty() }
@@ -147,17 +146,18 @@ object FirebaseRepository {
             updates["users/$invitedUid/invitations/$id"] = true
         }
 
-        //geofence update
+        // Create a copy of the geofence with a group-specific ID
         if (group.geofence != null) {
             val gf = group.geofence!!
+            val groupGeofenceId = "group_${id}_${System.currentTimeMillis()}"
             updates["groups/$id/geofence"] = mapOf(
-                "id" to gf.id,
+                "id" to groupGeofenceId,  // Use the group-specific copy ID
                 "name" to gf.name,
                 "center" to mapOf("lat" to gf.center.latitude, "lng" to gf.center.longitude),
                 "typeId" to gf.typeId,
                 "radius" to gf.radius,
                 "points" to gf.points.map { mapOf("lat" to it.latitude, "lng" to it.longitude) },
-                "geoAlarmId" to gf.geoAlarmId
+                "geoAlarmId" to null  // Clear alarm association for group geofences
             )
         }
 
@@ -944,7 +944,9 @@ object FirebaseRepository {
     // ── Group Geofence ─────────────────────────────────────────────────────
 
     /**
-     * Set or update the group's geofence. Only Admins/SuperAdmins can call this.
+     * Set or update the group's geofence. Creates an independent copy so members
+     * removing the geofence locally doesn't affect the group's geofence.
+     * Only Admins/SuperAdmins can call this.
      */
     suspend fun setGroupGeofence(groupId: String, geofence: GeofenceArea?) {
         ensureAuth()
@@ -954,17 +956,18 @@ object FirebaseRepository {
             groupRef.removeValue().await()
             Log.d("FirebaseRepository", "removeGroupGeofence: removed geofence from group $groupId")
         } else {
+            // Store the geofence copy with group-specific ID
             val data = mapOf(
-                "id" to geofence.id,
+                "id" to geofence.id,  // This is now the group-specific ID
                 "name" to geofence.name,
                 "center" to mapOf("lat" to geofence.center.latitude, "lng" to geofence.center.longitude),
                 "typeId" to geofence.typeId,
                 "radius" to geofence.radius,
                 "points" to geofence.points.map { mapOf("lat" to it.latitude, "lng" to it.longitude) },
-                "geoAlarmId" to geofence.geoAlarmId
+                "geoAlarmId" to geofence.geoAlarmId  // Will be null for group geofences
             )
             groupRef.setValue(data).await()
-            Log.d("FirebaseRepository", "setGroupGeofence: set geofence for group $groupId")
+            Log.d("FirebaseRepository", "setGroupGeofence: set geofence for group $groupId with ID=${geofence.id}")
         }
     }
 

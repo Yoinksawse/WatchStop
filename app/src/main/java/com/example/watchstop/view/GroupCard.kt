@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.watchstop.activities.EditGroupActivity
+import com.example.watchstop.activities.ViewGroupMapActivity
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.data.CurrentGroupObject
@@ -494,11 +495,15 @@ fun GroupCard(
                                 }
                             }
                         )
-                        
-                        // Show Map button (currently doing nothing)
+
+                        // Show Map button
                         SketchButton(
                             text = "Show Map",
-                            onClick = { /* TODO: Implement map view logic */ }
+                            onClick = {
+                                val intent = Intent(context, ViewGroupMapActivity::class.java)
+                                intent.putExtra("groupId", groupId)
+                                context.startActivity(intent)
+                            }
                         )
                     }
 

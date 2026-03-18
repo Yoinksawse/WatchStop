@@ -69,7 +69,7 @@ fun GroupsScreen() {
     }.collectAsState(initial = emptyList())
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Groups", "Notifications")
+    val tabs = listOf("Groups", "Pending Operations")
 
     var showCreationDialog by remember { mutableStateOf(false) }
     var showLoginPrompt by remember { mutableStateOf(false) }

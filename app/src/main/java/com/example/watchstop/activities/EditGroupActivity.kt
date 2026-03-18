@@ -550,9 +550,18 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                 latest.eventDateTime
                             }
 
+                            // Create a copy of the geofence with a new group-specific ID
                             val selectedGeofence = if (selectedGeofenceId.isNotEmpty()) {
                                 UserGeofencesDatabase.getAllGeofences()
                                     .find { it.id == selectedGeofenceId }
+                                    ?.let { originalGeofence ->
+                                        // Create a new geofence copy for the group
+                                        val groupGeofenceId = "group_${groupId}_${System.currentTimeMillis()}"
+                                        originalGeofence.copy(
+                                            id = groupGeofenceId,
+                                            geoAlarmId = null // Clear any personal alarm associations
+                                        )
+                                    }
                             } else {
                                 null
                             }
@@ -586,6 +595,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                 ) {
                     Text("Save Changes")
                 }
+
             }
         }
 
@@ -631,6 +641,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
 
 
                         // Geofence
+// Geofence
                         var gfExpanded by remember { mutableStateOf(false) }
                         val selectedGeofenceName =
                             UserGeofencesDatabase.getAllGeofences()
@@ -646,10 +657,10 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                                border = buttonBorder, //use text field border thickness
+                                border = buttonBorder,
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = buttonContentColor)
                             ) {
-                                Text("Geofence: $selectedGeofenceName");
+                                Text("Geofence: $selectedGeofenceName")
                                 Icon(Icons.Default.ArrowDropDown, null)
                             }
                             DropdownMenu(
@@ -658,19 +669,44 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                             ) {
                                 UserGeofencesDatabase.getAllGeofences().forEach { gf ->
                                     DropdownMenuItem(
-                                        text = { Text(gf.name) },
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    Icons.Default.LocationOn,
+                                                    contentDescription = null,
+                                                    tint = accentColor,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(gf.name)
+                                            }
+                                        },
                                         onClick = {
-                                            selectedGeofenceId = gf.id;
+                                            selectedGeofenceId = gf.id
                                             gfExpanded = false
                                         }
                                     )
                                 }
 
+                                HorizontalDivider()
+
                                 DropdownMenuItem(
-                                    text = { Text(" +  Create New") },
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                Icons.Default.Add,
+                                                contentDescription = null,
+                                                tint = successColor,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Create New Geofence", color = successColor)
+                                        }
+                                    },
                                     onClick = {
                                         val intent = Intent(context, MapActivity::class.java)
                                         context.startActivity(intent)
+                                        gfExpanded = false
                                     }
                                 )
                             }
