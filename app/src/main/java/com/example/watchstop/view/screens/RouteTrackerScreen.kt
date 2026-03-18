@@ -81,6 +81,8 @@ fun RouteTrackerScreen() {
     var showHistory by remember { mutableStateOf(false) }
     var savedRoutesList = remember { mutableStateListOf<SavedRoute>() }
     var isRouteSaved by remember { mutableStateOf(false) }
+    var showPermissionDialog by remember { mutableStateOf(false) }
+    var isCheckingLocation by remember { mutableStateOf(false) }
 
     //route info
     val pathPoints = remember { mutableStateListOf<PathPoint>() }
@@ -109,6 +111,42 @@ fun RouteTrackerScreen() {
                 context, Manifest.permission.ACCESS_FINE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
         )
+    }
+
+    // Function to check location availability and start tracking
+    fun checkLocationAndStartTracking() {
+        if (!hasLocationPermission.value) {
+            showPermissionDialog = true
+            return
+        }
+
+        isCheckingLocation = true
+        fusedLocationClient
+            .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+            .addOnSuccessListener { loc ->
+                isCheckingLocation = false
+                if (loc != null) {
+                    //location available => start tracking
+                    isTracking = true
+                    if (startTime == 0L) startTime = System.currentTimeMillis()
+                } else {
+                    //location is null
+                    Toast.makeText(
+                        context,
+                        "Unable to get current location. Please check GPS/WiFi/Cellular is enabled.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+            .addOnFailureListener { exception ->
+                isCheckingLocation = false
+                //could ot get location
+                Toast.makeText(
+                    context,
+                    "Location error: ${exception.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
     }
 
     //BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN LIFECYCLE UPDATES
@@ -149,37 +187,47 @@ fun RouteTrackerScreen() {
     //PATH UPDATING: add point after every passing of time interval
     LaunchedEffect(isTracking, recordingInterval) {
         while (isTracking) {
-            fusedLocationClient
-                .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
-                .addOnSuccessListener { loc ->
-                    loc?.let {
-                        val newPoint = PathPoint(
-                            latitude = it.latitude,
-                            longitude = it.longitude,
-                            speed = it.speed,
-                            timestamp = System.currentTimeMillis()
-                        )
-                        if (pathPoints.isNotEmpty()) {
-                            val last = pathPoints.last()
-                            val results = FloatArray(1)
-                            Location.distanceBetween(
-                                last.latitude, last.longitude,
-                                it.latitude, it.longitude,
-                                results
+            try {
+                fusedLocationClient
+                    .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                    .addOnSuccessListener { loc ->
+                        loc?.let {
+                            val newPoint = PathPoint(
+                                latitude = it.latitude,
+                                longitude = it.longitude,
+                                speed = it.speed,
+                                timestamp = System.currentTimeMillis()
                             )
-                            if (results[0] >= 10f) {
-                                val timeChangeSecs = (newPoint.timestamp - last.timestamp) / 1000.0f
-                                val calculatedSpeed =
-                                    if (timeChangeSecs > 0) results[0] / timeChangeSecs
-                                    else 0f
+                            if (pathPoints.isNotEmpty()) {
+                                val last = pathPoints.last()
+                                val results = FloatArray(1)
+                                Location.distanceBetween(
+                                    last.latitude, last.longitude,
+                                    it.latitude, it.longitude,
+                                    results
+                                )
+                                if (results[0] >= 10f) {
+                                    val timeChangeSecs = (newPoint.timestamp - last.timestamp) / 1000.0f
+                                    val calculatedSpeed =
+                                        if (timeChangeSecs > 0) results[0] / timeChangeSecs
+                                        else 0f
 
-                                totalDistanceMeters += results[0]
-                                pathPoints.add(newPoint.copy(speed = calculatedSpeed))
+                                    totalDistanceMeters += results[0]
+                                    pathPoints.add(newPoint.copy(speed = calculatedSpeed))
+                                }
+                            } else {
+                                pathPoints.add(newPoint)
                             }
                         }
-                        else pathPoints.add(newPoint)
                     }
-                }
+                    .addOnFailureListener {
+                        Toast.makeText(context, "Failed to get location update", Toast.LENGTH_SHORT).show()
+                    }
+            } catch (e: SecurityException) {
+                // Permission was revoked during tracking
+                isTracking = false
+                showPermissionDialog = true
+            }
             delay(recordingInterval.toLong() * 1000)
         }
     }
@@ -269,10 +317,10 @@ fun RouteTrackerScreen() {
 
     //(coords of pin, id of closest pathPoint along the line)
     val (pinLatLng, pinNearestPointIndex)
-        = remember(pinFraction, pathPoints.size) {
-            if (pathPoints.size < 2) LatLng(0.0, 0.0) to 0
-            else calcPinPosInfo(pathPoints.toList(), pinFraction)
-        }
+            = remember(pinFraction, pathPoints.size) {
+        if (pathPoints.size < 2) LatLng(0.0, 0.0) to 0
+        else calcPinPosInfo(pathPoints.toList(), pinFraction)
+    }
 
     val pathPointNearestToPin =
         if (pinNearestPointIndex < pathPoints.size && pathPoints.size >= 2)
@@ -405,48 +453,28 @@ fun RouteTrackerScreen() {
             IconButton(
                 onClick = {
                     if (isTracking) {
-                        //capture final point
-                        fusedLocationClient
-                            .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
-                            .addOnSuccessListener { loc ->
-                                loc?.let {
-                                    val newPoint = PathPoint(
-                                        latitude = it.latitude,
-                                        longitude = it.longitude,
-                                        speed = it.speed,
-                                        timestamp = System.currentTimeMillis()
-                                    )
-                                    if (pathPoints.isNotEmpty()) {
-                                        val last = pathPoints.last()
-                                        val results = FloatArray(1)
-                                        Location.distanceBetween(
-                                            last.latitude, last.longitude,
-                                            it.latitude, it.longitude,
-                                            results
-                                        )
-                                        if (results[0] >= 10f) {
-                                            val timeChangeSecs = (newPoint.timestamp - last.timestamp) / 1000.0f
-                                            val calculatedSpeed =
-                                                if (timeChangeSecs > 0) results[0] / timeChangeSecs else 0f
-                                            totalDistanceMeters += results[0]
-                                            pathPoints.add(newPoint.copy(speed = calculatedSpeed))
-                                        }
-                                    } else {
-                                        pathPoints.add(newPoint)
-                                    }
-                                }
-                                isTracking = false
-                            }
+                        // Stop tracking
+                        isTracking = false
                     } else {
-                        isTracking = true
+                        // Check location and start tracking
+                        checkLocationAndStartTracking()
                     }
+                },
+                enabled = !isCheckingLocation
+            ) {
+                if (isCheckingLocation) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (isTracking) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        tint = if (isTracking) NeonLime else Color.White,
+                        contentDescription = "Toggle"
+                    )
                 }
-            ){
-                Icon(
-                    imageVector = if (isTracking) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    tint = if (isTracking) NeonLime else Color.White,
-                    contentDescription = "Toggle"
-                )
             }
 
             //3. save button (Only visible if not tracking and route exists)
@@ -477,6 +505,7 @@ fun RouteTrackerScreen() {
                     startTime = 0L
                     pinFraction = 1f
                     pinExpanded = false
+                    isRouteSaved = false
                 }
             ) {
                 Icon(
@@ -624,6 +653,36 @@ fun RouteTrackerScreen() {
                     )
                 }
             }
+        }
+
+        // Permission Dialog
+        if (showPermissionDialog) {
+            AlertDialog(
+                onDismissRequest = { showPermissionDialog = false },
+                title = { Text("Location Permission Required") },
+                text = {
+                    Text("Precise location is needed to track your route. Please enable location permission in settings.")
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showPermissionDialog = false
+                            Toast.makeText(
+                                context,
+                                "Please enable location permission in app settings",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showPermissionDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
 
         if (showHistory) {
@@ -827,9 +886,6 @@ private fun saveRoute(
     Toast.makeText(context, "Route saved to database", Toast.LENGTH_SHORT).show()
 }
 
-/**
- * Removes a specific route from the database.
- */
 private fun deleteRoute(
     database: com.google.firebase.database.DatabaseReference,
     userId: String,
