@@ -18,9 +18,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.DropdownMenu
 import androidx.compose.material.icons.Icons
@@ -67,6 +69,9 @@ import com.example.watchstop.view.screens.RouteTrackerScreen
 import com.example.watchstop.view.screens.GroupsScreen
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.ui.Alignment
+import com.example.watchstop.view.ui.theme.LocationAlarm
 
 var debugOnboardingOn = false; //TODO: just for debugging; TURN OFF
 
@@ -181,7 +186,7 @@ class MainActivity : AppCompatActivity() {
         if (granted) {
             startGeofenceService()
         } else {
-            Toast.makeText(this, "Please set Location to 'Allow all the time' in settings for background alarms.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Set Location to 'Allow all the time' in settings for background alarms", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -227,10 +232,20 @@ fun MainScreen(onToggleDarkMode: () -> Unit) {
 
             TopAppBar(
                 title = {
-                    Text(
-                        text = stringResource(R.string.app_name),
-                        color = Color.White
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Icon(
+                            imageVector = Icons.Default.LocationAlarm,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Text(
+                            text = stringResource(R.string.app_name),
+                            color = Color.White
+                        )
+                    }
                 },
                 scrollBehavior = scrollBehavior,
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -264,16 +279,22 @@ fun MainScreen(onToggleDarkMode: () -> Unit) {
                                 modifier = Modifier.background(MaterialTheme.colorScheme.surface)
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("Settings") },
+                                    text = { Text("Show Tutorial") },
                                     onClick = {
-                                        Toast.makeText(context, "Settings clicked", Toast.LENGTH_SHORT).show()
+                                        val intent = Intent(context, OnboardingActivity::class.java)
+                                        context.startActivity(intent)
                                         expanded = false
                                     }
                                 )
+                                //IMPLICIT INTENT USAGE TO OPEN WEBSITE: FULFILLED!!!!
                                 DropdownMenuItem(
                                     text = { Text("About WatchStop") },
                                     onClick = {
-                                        Toast.makeText(context, "WatchStop v1.0", Toast.LENGTH_SHORT).show()
+                                        val watchStopGithubIntent = Intent(
+                                            Intent.ACTION_VIEW,
+                                            android.net.Uri.parse("https://github.com/Yoinksawse/WatchStop")
+                                        )
+                                        context.startActivity(watchStopGithubIntent)
                                         expanded = false
                                     }
                                 )

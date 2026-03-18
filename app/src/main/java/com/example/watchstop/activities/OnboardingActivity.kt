@@ -260,7 +260,7 @@ fun OnboardingReactive(
                             style = TextStyle(
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (darkmode) Color.White else Color.Black
+                                color = if (darkmode) Color.White else Color.Black //TODO ADJUST THEME
                             ),
                             modifier = Modifier
                                 .alpha(linkAlpha.value)

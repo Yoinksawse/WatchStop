@@ -113,7 +113,7 @@ fun RouteTrackerScreen() {
         )
     }
 
-    // Function to check location availability and start tracking
+    //check location availability + start tracking
     fun checkLocationAndStartTracking() {
         if (!hasLocationPermission.value) {
             showPermissionDialog = true
