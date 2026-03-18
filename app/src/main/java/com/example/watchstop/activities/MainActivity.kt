@@ -2,7 +2,6 @@ package com.example.watchstop.activities
 
 import android.Manifest
 import android.content.Intent
-import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -69,8 +68,8 @@ import com.example.watchstop.view.screens.RouteTrackerScreen
 import com.example.watchstop.view.screens.GroupsScreen
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.launch
-import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.ui.Alignment
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.example.watchstop.view.ui.theme.LocationAlarm
 
 var debugOnboardingOn = false; //TODO: just for debugging; TURN OFF
@@ -78,18 +77,23 @@ var debugOnboardingOn = false; //TODO: just for debugging; TURN OFF
 class MainActivity : AppCompatActivity() {
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen() //INSTALL SPLASH SCREEN
+
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // --- Loading Data from Cache First ---
+        var ready = false
+        splashScreen.setKeepOnScreenCondition { !ready } //PERSIST SPLASHSCREEN
+
+        //load saved data from cache
         UserGeofencesDatabase.loadGeofencesFromCache(this)
         GeoAlarmsDatabase.loadAlarmsFromCache(this)
 
-        // --- Persistent Session Logic ---
+        //auto login & other info gathering logic
         val userPrefs = getSharedPreferences("WatchStopUserPrefs", MODE_PRIVATE)
         //userPrefs.edit().clear().apply() //TODO: debug line; clear cache manually
 
-        // Save credentials if just returned from a successful Login/SignUp
+        //save creds if just return from successful login/signup
         val intentIdentifier = intent.getStringExtra("LOGIN_IDENTIFIER")
         val intentPassword = intent.getStringExtra("LOGIN_PASSWORD")
         if (intentIdentifier != null && intentPassword != null) {
@@ -99,7 +103,7 @@ class MainActivity : AppCompatActivity() {
                 .apply()
         }
 
-        // Perform auto sign-in if a session exists and user is not currently logged in
+        //auto sign in if lastsignedinuser field is not null
         val savedEmail = userPrefs.getString("currentLoggedInAccount", "")
         val savedPassword = userPrefs.getString("savedPassword", "")
         if (!savedEmail.isNullOrEmpty() && !savedPassword.isNullOrEmpty() && !UserProfileObject.isLoggedIn) {
@@ -107,14 +111,10 @@ class MainActivity : AppCompatActivity() {
                 try {
                     UserProfileObject.signIn(savedEmail, savedPassword)
                     UserProfileObject.syncFromFirebase()
-                    
-                    // Retrieve from Firebase and then upload combined data
+
+                    //merge data from firebase + upload merged data to firebase
                     UserGeofencesDatabase.fetchGeofencesFromFirebaseDB()
                     GeoAlarmsDatabase.fetchAlarmsFromFirebaseDB()
-                    
-                    // Firebase calls above are asynchronous but the local list is populated
-                    // within the listener in those methods. We trigger a push in startObservingProfile 
-                    // of UserProfileObject once isLoggedIn becomes true.
                 } catch (e: Exception) {
                     Log.e("MainActivity", "Auto sign-in failed: ${e.message}")
                     userPrefs.edit()
@@ -131,7 +131,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // --- Onboarding Logic ---
+        //ONBOARDING SCREEN
         val prefs = getSharedPreferences("lab4_prefs", MODE_PRIVATE)
         if (debugOnboardingOn) {
             prefs.edit().putBoolean("first_use", true).apply()
@@ -142,6 +142,8 @@ class MainActivity : AppCompatActivity() {
             startActivity(onboardingIntent)
             prefs.edit { putBoolean("first_use", false) }
         }
+
+        ready = true //STOP SPLASH SCREEN
 
         setContent {
             WatchStopTheme(darkTheme = UserProfileObject.darkmode) {
@@ -233,14 +235,14 @@ fun MainScreen(onToggleDarkMode: () -> Unit) {
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Spacer(modifier = Modifier.width(14.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
                         Icon(
                             imageVector = Icons.Default.LocationAlarm,
                             contentDescription = null,
                             tint = Color.White,
                             modifier = Modifier.size(28.dp)
                         )
-                        Spacer(modifier = Modifier.width(14.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
                         Text(
                             text = stringResource(R.string.app_name),
                             color = Color.White

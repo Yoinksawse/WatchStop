@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.WatchStop" parent="Theme.AppCompat.DayNight.NoActionBar" />
+    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#FFFFFF</item>
+
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/watchstoplogo_round</item>
+
+        <item name="postSplashScreenTheme">@style/Theme.WatchStop</item>
+    </style>
 </resources>
