@@ -1,0 +1,16 @@
+Member taps "Vote"
+  │
+  ├─ votesToRemoveAdmin/$targetUid/$voterUid = true
+  │    Rule: voterUid === auth.uid, isMember, targetIsAdmin, !data.exists() ✓
+  │
+  ├─ voteCountsToRemoveAdmin/$targetUid  ← incrementInt() transaction
+  │    Rule: isMember && (targetIsAdmin || newData === null) ✓
+  │    Atomic: no race condition between concurrent voters
+  │
+  └─ if newCount > memberCount / 2 ──▶ groupRef.updateChildren({
+         memberRoles/$targetUid            = "MEMBER"    ← vote-threshold rule ✓
+         canToggleSharing/$targetUid       = false       ← vote-threshold rule ✓
+         votesToRemoveAdmin/$targetUid     = null        ← $targetUid null-write rule ✓
+         voteCountsToRemoveAdmin/$targetUid = null       ← null allowed by rule ✓
+     })
+     All rules evaluate against PRE-UPDATE state → target still "ADMIN" at check time ✓

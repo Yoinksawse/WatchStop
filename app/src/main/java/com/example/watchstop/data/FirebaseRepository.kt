@@ -23,9 +23,12 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 import android.widget.Toast
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
+import kotlin.coroutines.cancellation.CancellationException
+import kotlin.coroutines.resumeWithException
 
 
 object FirebaseRepository {
@@ -104,26 +107,30 @@ object FirebaseRepository {
      */
     @RequiresApi(Build.VERSION_CODES.O)
     suspend fun saveGroup(group: GroupEntry, groupId: String? = null): String {
-        Log.d("saveGroup", "entered — currentUid=${currentUid}, title=${group.title}")
+        Log.d("saveGroup", "entered — currentUid=$currentUid, title=${group.title}")
         ensureAuth()
 
         val id = groupId ?: db.child("groups").push().key
         ?: error("Could not generate group key")
 
         val updates = mutableMapOf<String, Any?>(
-            "groups/$id/title"              to group.title,
-            "groups/$id/description"        to group.description,
-            "groups/$id/eventDateTimeEpoch" to group.eventDateTime
+            "groups/$id/title"                  to group.title,
+            "groups/$id/description"            to group.description,
+            "groups/$id/eventDateTimeEpoch"     to group.eventDateTime
                 .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-            "groups/$id/memberRoles"        to group.memberRoles.mapValues { it.value.name },
+            "groups/$id/memberRoles"            to group.memberRoles.mapValues { it.value.name },
             "groups/$id/locationSharingEnabled" to group.locationSharingEnabled,
-            "groups/$id/canToggleSharing"   to group.canToggleSharing,
-            "groups/$id/tripStatus"         to group.tripStatus.mapValues { it.value.name },
-            "groups/$id/adminApplications"  to group.adminApplications.associateWith { true },
-            "groups/$id/adminApplicationVotes" to group.adminApplicationVotes
+            "groups/$id/canToggleSharing"       to group.canToggleSharing,
+            "groups/$id/tripStatus"             to group.tripStatus.mapValues { it.value.name },
+            "groups/$id/adminApplications"      to group.adminApplications.associateWith { true },
+            "groups/$id/adminApplicationVotes"  to group.adminApplicationVotes
                 .mapValues { it.value.associateWith { true } },
-            "groups/$id/votesToRemoveAdmin" to group.votesToRemoveAdmin
-                .mapValues { it.value.associateWith { true } }
+            "groups/$id/votesToRemoveAdmin"     to group.votesToRemoveAdmin
+                .mapValues { it.value.associateWith { true } },
+            // FIX: persist memberCount and voteCountsToRemoveAdmin
+            "groups/$id/memberCount"            to group.groupMemberNames.size,
+            "groups/$id/voteCountsToRemoveAdmin" to group.voteCountsToRemoveAdmin
+                .takeIf { it.isNotEmpty() }
         )
 
         for (uid in group.groupMemberNames) {
@@ -177,7 +184,9 @@ object FirebaseRepository {
             "adminApplicationVotes" to group.adminApplicationVotes
                 .mapValues { it.value.associateWith { true } },
             "votesToRemoveAdmin" to group.votesToRemoveAdmin
-                .mapValues { it.value.associateWith { true } }
+                .mapValues { it.value.associateWith { true } },
+            // FIX: keep memberCount in sync whenever metadata is saved
+            "memberCount"           to group.groupMemberNames.size
         )
 
         // Instead of updating the entire maps, update each child individually
@@ -268,24 +277,8 @@ object FirebaseRepository {
     @RequiresApi(Build.VERSION_CODES.O)
     suspend fun deleteGroup(groupId: String) {
         ensureAuth()
-
-        //TODO: fixing
-        // Get all related data first
-        val groupSnap = db.child("groups").child(groupId).get().await()
-
         // Clean up locations
         db.child("groupLocations").child(groupId).removeValue().await()
-
-        // Clean up any geofences related to this group
-        val geofencesSnap = db.child("geofences").get().await()
-        geofencesSnap.children.forEach { userGeofences ->
-            userGeofences.children.forEach { geofence ->
-                if (geofence.child("groupId").getValue(String::class.java) == groupId) {
-                    geofence.ref.removeValue().await()
-                }
-            }
-        }
-        //TODO: fix END EXTRA
 
         val groupRef = db.child("groups").child(groupId)
 
@@ -334,28 +327,25 @@ object FirebaseRepository {
 
         val groupRef = db.child("groups").child(groupId)
 
-        // FIRST: Remove from groupLocations (requires being in memberIds)
         db.child("groupLocations").child(groupId).child(uid).removeValue().await()
-
-        // THEN: Remove from memberIds (allowed by rules for the user)
         groupRef.child("memberIds").child(uid).removeValue().await()
 
-        // Try to remove role (if rules allow)
         try {
             groupRef.child("memberRoles").child(uid).removeValue().await()
         } catch (e: DatabaseException) {
             Log.w("FirebaseRepository", "Could not remove role: ${e.message}")
         }
 
-        // Remove location sharing settings
         groupRef.child("locationSharingEnabled").child(uid).removeValue().await()
         groupRef.child("canToggleSharing").child(uid).removeValue().await()
-
-        // Remove trip status
         groupRef.child("tripStatus").child(uid).removeValue().await()
 
-        // Remove from user's groups list
         db.child("users").child(uid).child("groups").child(groupId).removeValue().await()
+
+        // FIX: decrement memberCount
+        val currentCount = groupRef.child("memberCount").get().await()
+            .getValue(Int::class.java) ?: (remainingMembers.size + 1)
+        groupRef.child("memberCount").setValue(maxOf(0, currentCount - 1)).await()
 
         Log.d("FirebaseRepository", "leaveGroup: $uid left group $groupId")
     }
@@ -513,7 +503,13 @@ object FirebaseRepository {
             "users/$uid/invitations/$groupId"             to null
         )
         db.updateChildren(updates).await()
+
+        // FIX: increment memberCount AFTER the member is in memberIds
+        // (rule allows writes from current members and pending-invitation holders)
+        db.child("groups").child(groupId).child("memberCount")
+            .incrementInt()  // uses the transaction helper above
     }
+
 
     suspend fun declineInvitation(groupId: String) {
         val uid = ensureAuth()
@@ -589,64 +585,89 @@ object FirebaseRepository {
 
     /** Cast a vote to remove an admin. Demotes if threshold met. SuperAdmin is protected. */
     @RequiresApi(Build.VERSION_CODES.O)
-    suspend fun voteToRemoveAdmin(groupId: String, targetUid: String, voterUid: String): Boolean {
+    suspend fun voteToRemoveAdmin(
+        groupId: String,
+        targetUid: String,
+        voterUid: String
+    ): Boolean {
         ensureAuth()
         val groupRef = db.child("groups").child(groupId)
         val snap = groupRef.get().await()
         val entry = snap.toGroupEntry() ?: return false
 
-        if (entry.isSuperAdmin(targetUid)) throw IllegalStateException("Cannot vote to remove a Super Admin")
+        if (entry.isSuperAdmin(targetUid))
+            throw IllegalStateException("Cannot vote to remove a Super Admin")
 
+        // ── SuperAdmin path: immediate demotion ───────────────────────────────
         if (entry.isSuperAdmin(voterUid)) {
-            // SuperAdmin demotes immediately
-            val updates = mapOf(
-                "memberRoles/$targetUid" to GroupRole.MEMBER.name,
-                "canToggleSharing/$targetUid" to false,
-                "votesToRemoveAdmin/$targetUid" to null
+            // SuperAdmin has the root-level group write grant, so this batch is unrestricted.
+            val updates = mapOf<String, Any?>(
+                "memberRoles/$targetUid"               to GroupRole.MEMBER.name,
+                "canToggleSharing/$targetUid"          to false,
+                "votesToRemoveAdmin/$targetUid"        to null,   // root write grant covers this
+                "voteCountsToRemoveAdmin/$targetUid"   to null
             )
             groupRef.updateChildren(updates).await()
-            Log.d("FirebaseRepository", "SuperAdmin demoted $targetUid")
-            return true // Demotion happened immediately
-        } else {
-            // Regular vote - add the vote and increment count
-            val voteRef = groupRef.child("votesToRemoveAdmin").child(targetUid)
+            Log.d("FirebaseRepository", "SuperAdmin immediately demoted $targetUid")
+            return true
+        }
 
-            // Get current vote count
-            val countSnapshot = voteRef.child("count").get().await()
-            val currentCount = countSnapshot.getValue(Int::class.java) ?: 0
-            val newCount = currentCount + 1
+        // ── Regular-member path ───────────────────────────────────────────────
 
-            // Prepare updates
-            val updates = mapOf(
-                "$voterUid" to true,
-                "count" to newCount
-            )
-
-            // Update both the vote and the count
-            voteRef.updateChildren(updates).await()
-            Log.d("FirebaseRepository", "Vote cast by $voterUid to remove $targetUid. Count: $newCount")
-
-            // Check if threshold is now met
-            val totalMembers = entry.groupMemberNames.size
-            val needed = (totalMembers / 2) + 1
-
-            // If threshold met, DEMOTE AUTOMATICALLY
-            if (newCount >= needed) {
-                Log.d("FirebaseRepository", "Threshold met! Demoting $targetUid to MEMBER")
-
-                val demoteUpdates = mapOf(
-                    "memberRoles/$targetUid" to GroupRole.MEMBER.name,
-                    "canToggleSharing/$targetUid" to false,
-                    "votesToRemoveAdmin/$targetUid" to null
-                )
-                groupRef.updateChildren(demoteUpdates).await()
-                Log.d("FirebaseRepository", "Auto-demoted $targetUid after vote threshold met")
-                return true
-            }
-
+        // Step 1 — Cast vote once (rule enforces !data.exists() → safe from double-vote)
+        try {
+            groupRef
+                .child("votesToRemoveAdmin")
+                .child(targetUid)
+                .child(voterUid)
+                .setValue(true)
+                .await()
+        } catch (e: Exception) {
+            // Permission denied means the voter already voted, or the target is no longer ADMIN
+            Log.w("FirebaseRepository", "Vote cast failed for $voterUid → $targetUid: ${e.message}")
             return false
         }
+
+        // Step 2 — Atomically increment the counter in the CORRECT path
+        //          (voteCountsToRemoveAdmin, NOT votesToRemoveAdmin)
+        val newCount = groupRef
+            .child("voteCountsToRemoveAdmin")
+            .child(targetUid)
+            .incrementInt()   // transaction helper — race-safe
+
+        Log.d("FirebaseRepository",
+            "Vote by $voterUid against $targetUid registered. Count now: $newCount")
+
+        // Step 3 — Fetch fresh state and evaluate threshold
+        val freshSnap = groupRef.get().await()
+        val memberCount = freshSnap.child("memberCount").getValue(Int::class.java)
+            ?: freshSnap.child("memberIds").childrenCount.toInt()
+
+        Log.d("FirebaseRepository",
+            "Threshold check: $newCount votes / $memberCount members")
+
+        if (newCount > (memberCount / 2)) {
+            Log.d("FirebaseRepository", "Threshold met — demoting $targetUid")
+
+            // All four paths need separate rule evaluations for a regular-member voter:
+            //   memberRoles/$targetUid        → vote-threshold branch in memberRoles rule ✓
+            //   canToggleSharing/$targetUid   → vote-threshold branch in canToggleSharing rule ✓
+            //   votesToRemoveAdmin/$targetUid → $targetUid null-write rule (target still ADMIN in DB) ✓
+            //   voteCountsToRemoveAdmin/$targetUid → null allowed by updated rule ✓
+            val demoteUpdates = mapOf<String, Any?>(
+                "memberRoles/$targetUid"             to GroupRole.MEMBER.name,
+                "canToggleSharing/$targetUid"        to false,
+                "votesToRemoveAdmin/$targetUid"      to null,
+                "voteCountsToRemoveAdmin/$targetUid" to null
+            )
+            groupRef.updateChildren(demoteUpdates).await()
+            Log.d("FirebaseRepository", "Auto-demoted $targetUid after vote threshold met")
+            return true
+        }
+
+        return false
     }
+
 
     /** Remove a member from a group. SuperAdmins cannot be removed. */
     @RequiresApi(Build.VERSION_CODES.O)
@@ -658,15 +679,20 @@ object FirebaseRepository {
             throw IllegalStateException("Super-Admins cannot be removed from groups.")
 
         val updates = mutableMapOf<String, Any?>(
-            "memberIds/$targetUid" to null,
-            "memberRoles/$targetUid" to null,
+            "memberIds/$targetUid"           to null,
+            "memberRoles/$targetUid"         to null,
             "locationSharingEnabled/$targetUid" to null,
-            "canToggleSharing/$targetUid" to null,
-            "tripStatus/$targetUid" to null
+            "canToggleSharing/$targetUid"    to null,
+            "tripStatus/$targetUid"          to null
         )
         groupRef.updateChildren(updates).await()
         db.child("groupLocations").child(groupId).child(targetUid).removeValue().await()
         db.child("users").child(targetUid).child("groups").child(groupId).removeValue().await()
+
+        // FIX: decrement memberCount
+        val currentCount = groupRef.child("memberCount").get().await()
+            .getValue(Int::class.java) ?: entry.groupMemberNames.size
+        groupRef.child("memberCount").setValue(maxOf(0, currentCount - 1)).await()
     }
 
     /** Set trip status. TRAVELLING auto-enables sharing; ARRIVED auto-stops it. */
@@ -939,13 +965,20 @@ fun DataSnapshot.toGroupEntry(): GroupEntry? {
 
     val removalVotes = child("votesToRemoveAdmin").children.associate { targetSnap ->
         val targetUid = targetSnap.key ?: ""
-        // Get all voter UIDs (excluding the count field)
         val voters = targetSnap.children
-            .filter { it.key != "count" }
+            .filter { it.key != "count" }   // guard: never treat a stale "count" child as a UID
             .mapNotNull { it.key }
             .toMutableSet()
         targetUid to voters
     }.toMutableMap()
+
+    // FIX: read voteCountsToRemoveAdmin from its own node (not embedded in votes)
+    val voteCountsToRemoveAdmin = child("voteCountsToRemoveAdmin").children.associate { snap ->
+        (snap.key ?: "") to (snap.getValue(Int::class.java) ?: 0)
+    }.toMutableMap()
+
+    // FIX: read persisted memberCount; fall back to live memberIds size
+    val memberCount = child("memberCount").getValue(Int::class.java) ?: memberIds.size
 
     return GroupEntry(
         title = title,
@@ -959,7 +992,10 @@ fun DataSnapshot.toGroupEntry(): GroupEntry? {
         tripStatus = tripStatuses,
         adminApplications = applications,
         adminApplicationVotes = applicationVotes,
-        votesToRemoveAdmin = removalVotes
+        votesToRemoveAdmin = removalVotes,
+        // FIX: pass both new fields
+        memberCount = memberCount,
+        voteCountsToRemoveAdmin = voteCountsToRemoveAdmin
     )
 }
 
@@ -989,3 +1025,29 @@ private fun DataSnapshot.toGeoAlarm(): GeoAlarm? {
             ?.let { LocalTime.parse(it) }
     )
 }
+
+/**
+ * Atomically increments an Int node and returns the new value.
+ * Safe under concurrent writes — uses Firebase RTDB runTransaction internally.
+ */
+private suspend fun DatabaseReference.incrementInt(): Int =
+    suspendCancellableCoroutine { cont ->
+        runTransaction(object : Transaction.Handler {
+            override fun doTransaction(current: MutableData): Transaction.Result {
+                current.value = (current.getValue(Int::class.java) ?: 0) + 1
+                return Transaction.success(current)
+            }
+            override fun onComplete(
+                error: DatabaseError?,
+                committed: Boolean,
+                snapshot: DataSnapshot?
+            ) {
+                if (error != null) cont.resumeWithException(error.toException())
+                else cont.resume(
+                    snapshot?.getValue(Int::class.java) ?: 0
+                ) { cause, _, _ -> onCancellation(cause) }
+            }
+
+            fun onCancellation(cause: Throwable) {} //TODO: idk what this is
+        })
+    }

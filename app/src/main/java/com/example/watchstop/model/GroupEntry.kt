@@ -25,7 +25,10 @@ data class GroupEntry(
     val tripStatus: MutableMap<String, TripStatus> = mutableMapOf(),
     val adminApplications: MutableSet<String> = mutableSetOf(),
     val adminApplicationVotes: MutableMap<String, MutableSet<String>> = mutableMapOf(),
-    val votesToRemoveAdmin: MutableMap<String, MutableSet<String>> = mutableMapOf()
+    val votesToRemoveAdmin: MutableMap<String, MutableSet<String>> = mutableMapOf(),
+    // New counter fields for security rules
+    var memberCount: Int = 0,
+    val voteCountsToRemoveAdmin: MutableMap<String, Int> = mutableMapOf()
 ) {
     /** Deep-copy constructor */
     constructor(other: GroupEntry) : this(
@@ -42,13 +45,18 @@ data class GroupEntry(
         adminApplicationVotes = other.adminApplicationVotes
             .mapValues { it.value.toMutableSet() }.toMutableMap(),
         votesToRemoveAdmin = other.votesToRemoveAdmin
-            .mapValues { it.value.toMutableSet() }.toMutableMap()
+            .mapValues { it.value.toMutableSet() }.toMutableMap(),
+        memberCount = other.memberCount,
+        voteCountsToRemoveAdmin = other.voteCountsToRemoveAdmin.toMutableMap()
     )
 
     // ─── Member Management ─────────────────────────────────────────────────
 
     fun addMember(uid: String, role: GroupRole) {
-        if (!groupMemberNames.contains(uid)) groupMemberNames.add(uid)
+        if (!groupMemberNames.contains(uid)) {
+            groupMemberNames.add(uid)
+            memberCount = groupMemberNames.size
+        }
         pendingInvitations.remove(uid)
         memberRoles[uid] = role
         locationSharingEnabled[uid] = false
@@ -57,6 +65,19 @@ data class GroupEntry(
         // Initial state: Members cannot toggle, Admins can.
         canToggleSharing[uid] = role != GroupRole.MEMBER
         tripStatus[uid] = TripStatus.INACTIVE
+    }
+
+    fun removeMember(uid: String) {
+        groupMemberNames.remove(uid)
+        memberCount = groupMemberNames.size
+        memberRoles.remove(uid)
+        locationSharingEnabled.remove(uid)
+        canToggleSharing.remove(uid)
+        tripStatus.remove(uid)
+        adminApplications.remove(uid)
+        adminApplicationVotes.remove(uid)
+        votesToRemoveAdmin.remove(uid)
+        voteCountsToRemoveAdmin.remove(uid)
     }
 
     fun inviteMember(uid: String) {
@@ -149,12 +170,16 @@ data class GroupEntry(
         val votes = votesToRemoveAdmin.getOrPut(targetUid) { mutableSetOf() }
         votes.add(voterUid)
 
+        // Update vote count
+        voteCountsToRemoveAdmin[targetUid] = votes.size
+
         // Requirement: If a majority agrees, the administrator role is revoked.
         val eligibleVoters = groupMemberNames.filter { it != targetUid }
         if (votes.size > eligibleVoters.size / 2) {
             memberRoles[targetUid] = GroupRole.MEMBER
             canToggleSharing[targetUid] = false
             votesToRemoveAdmin.remove(targetUid)
+            voteCountsToRemoveAdmin.remove(targetUid)
             return true
         }
         return false
