@@ -281,6 +281,18 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
     val primaryText = if (darkmode) Color.White else Color.Black
     val secondaryText = if (darkmode) Color(0xFF8E8E93) else Color(0xFF636366)
 
+    // State for demotion confirmation dialog (matches GroupCard pattern)
+    var showDemotionDialog by remember { mutableStateOf(false) }
+    var demotionThresholdMet by remember { mutableStateOf(false) }
+    var targetUsername by remember { mutableStateOf("") }
+
+    // Pre-fetch username for RemovalVote notifications
+    if (item is NotificationItem.RemovalVote) {
+        LaunchedEffect(item.targetUid) {
+            targetUsername = FirebaseRepository.getUsername(item.targetUid)
+        }
+    }
+
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = backgroundColor),
@@ -304,7 +316,7 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
                     text = when (item) {
                         is NotificationItem.Invitation -> "Group Invitation"
                         is NotificationItem.AdminApplication -> "Admin Application"
-                        is NotificationItem.RemovalVote -> "Administrator Removal Vote"
+                        is NotificationItem.RemovalVote -> "Administrator Demotion Vote"
                     },
                     style = MaterialTheme.typography.labelMedium,
                     color = iconColor,
@@ -323,9 +335,7 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
                         "$name applied for Admin in \"${item.groupTitle}\""
                     }
                     is NotificationItem.RemovalVote -> {
-                        var name by remember { mutableStateOf(item.targetUid) }
-                        LaunchedEffect(item.targetUid) { name = FirebaseRepository.getUsername(item.targetUid) }
-                        "Vote to remove $name as Admin in \"${item.groupTitle}\""
+                        "Vote to demote $targetUsername as Admin in \"${item.groupTitle}\""
                     }
                 },
                 color = primaryText,
@@ -371,14 +381,62 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
 
                     is NotificationItem.RemovalVote -> {
                         Button(
-                            onClick = { appScope.launch { FirebaseRepository.voteToRemoveAdmin(item.groupId, item.targetUid, UserProfileObject.uid ?: "") } },
+                            onClick = {
+                                appScope.launch {
+                                    val thresholdMet = FirebaseRepository.voteToRemoveAdmin(
+                                        item.groupId, item.targetUid, UserProfileObject.uid ?: ""
+                                    )
+                                    demotionThresholdMet = thresholdMet
+                                    showDemotionDialog = true
+                                }
+                            },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3B30))
-                        ) { Text("Vote to Remove") }
+                        ) { Text("Vote to Demote Admin") }
+
+                        OutlinedButton(
+                            onClick = {
+                                appScope.launch {
+                                    FirebaseRepository.abstainFromRemovalVote(
+                                        item.groupId, item.targetUid, UserProfileObject.uid ?: ""
+                                    )
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Abstain", color = secondaryText) }
                     }
                 }
             }
         }
+    }
+
+    // Demotion confirmation/result dialog (matches GroupCard pattern)
+    if (showDemotionDialog && item is NotificationItem.RemovalVote) {
+        AlertDialog(
+            onDismissRequest = { showDemotionDialog = false },
+            title = {
+                Text(
+                    if (demotionThresholdMet) "Admin Demoted"
+                    else "Vote Recorded"
+                )
+            },
+            text = {
+                Text(
+                    if (demotionThresholdMet) {
+                        "$targetUsername has been demoted from Admin to Member. " +
+                                "The vote threshold has been reached."
+                    } else {
+                        "Your vote to demote $targetUsername has been recorded. " +
+                                "The demotion will occur when >50% of group members vote."
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showDemotionDialog = false }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 }
 

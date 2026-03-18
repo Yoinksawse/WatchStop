@@ -459,7 +459,11 @@ object FirebaseRepository {
                 }
 
                 group.votesToRemoveAdmin.forEach { (targetUid, voters) ->
-                    if (targetUid != uid && !voters.contains(uid)) {
+                    val hasVoted = voters.contains(uid)
+                    val hasAbstained = group.removalAbstentions[targetUid]?.contains(uid) == true
+
+                    // Only show notification if user hasn't voted AND hasn't abstained
+                    if (targetUid != uid && !hasVoted && !hasAbstained) {
                         list.add(NotificationItem.RemovalVote(groupId, group.title, targetUid))
                     }
                 }
@@ -661,6 +665,22 @@ object FirebaseRepository {
         return false
     }
 
+    /**
+     * Abstain from a removal vote. Records the abstention so the notification disappears,
+     * but doesn't count toward the removal threshold.
+     */
+    suspend fun abstainFromRemovalVote(groupId: String, targetUid: String, voterUid: String) {
+        ensureAuth()
+        // Store "abstained" marker - this makes the notification disappear
+        // since the user will now exist in the voters set
+        db.child("groups").child(groupId)
+            .child("removalAbstentions")
+            .child(targetUid)
+            .child(voterUid)
+            .setValue(true)
+            .await()
+        Log.d("FirebaseRepository", "abstainFromRemovalVote: $voterUid abstained on $targetUid")
+    }
 
     /** Remove a member from a group. SuperAdmins cannot be removed. */
     @RequiresApi(Build.VERSION_CODES.O)
@@ -965,12 +985,18 @@ fun DataSnapshot.toGroupEntry(): GroupEntry? {
         targetUid to voters
     }.toMutableMap()
 
-    // FIX: read voteCountsToRemoveAdmin from its own node (not embedded in votes)
+    //read voteCountsToRemoveAdmin from its own node (not embedded in votes)
     val voteCountsToRemoveAdmin = child("voteCountsToRemoveAdmin").children.associate { snap ->
         (snap.key ?: "") to (snap.getValue(Int::class.java) ?: 0)
     }.toMutableMap()
 
-    // FIX: read persisted memberCount; fall back to live memberIds size
+    val removalAbstentions = child("removalAbstentions").children.associate { targetSnap ->
+        val targetUid = targetSnap.key ?: ""
+        val abstainers = targetSnap.children.mapNotNull { it.key }.toMutableSet()
+        targetUid to abstainers
+    }.toMutableMap()
+
+    //read persisted memberCount; fall back to live memberIds size
     val memberCount = child("memberCount").getValue(Int::class.java) ?: memberIds.size
 
     return GroupEntry(
@@ -986,9 +1012,9 @@ fun DataSnapshot.toGroupEntry(): GroupEntry? {
         adminApplications = applications,
         adminApplicationVotes = applicationVotes,
         votesToRemoveAdmin = removalVotes,
-        // FIX: pass both new fields
         memberCount = memberCount,
-        voteCountsToRemoveAdmin = voteCountsToRemoveAdmin
+        voteCountsToRemoveAdmin = voteCountsToRemoveAdmin,
+        removalAbstentions = removalAbstentions
     )
 }
 

@@ -28,7 +28,8 @@ data class GroupEntry(
     val votesToRemoveAdmin: MutableMap<String, MutableSet<String>> = mutableMapOf(),
     // New counter fields for security rules
     var memberCount: Int = 0,
-    val voteCountsToRemoveAdmin: MutableMap<String, Int> = mutableMapOf()
+    val voteCountsToRemoveAdmin: MutableMap<String, Int> = mutableMapOf(),
+    var removalAbstentions: MutableMap<String, MutableSet<String>> = mutableMapOf()
 ) {
     /** Deep-copy constructor */
     constructor(other: GroupEntry) : this(
