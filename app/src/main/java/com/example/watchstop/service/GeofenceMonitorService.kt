@@ -16,6 +16,7 @@ import com.example.watchstop.activities.MainActivity
 import com.example.watchstop.data.FirebaseRepository
 import com.example.watchstop.model.GeoAlarm
 import com.example.watchstop.model.GeofenceArea
+import com.example.watchstop.model.TripStatus
 import com.google.android.gms.location.*
 import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.database.FirebaseDatabase
@@ -210,6 +211,27 @@ class GeofenceMonitorService : Service() {
                                                 if (isInside && !arrivedSet.contains(uid)) {
                                                     // User just arrived at this geofence
                                                     arrivedSet.add(uid)
+
+                                                    // Get current trip status
+                                                    val currentTripStatus = groupSnap.child("tripStatus").child(uid).getValue(String::class.java)
+
+                                                    // Check if user is on an active trip
+                                                    if (currentTripStatus == TripStatus.TRAVELLING.name) {
+                                                        // Auto-update trip status to ARRIVED - now in coroutine scope
+                                                        serviceScope.launch {
+                                                            try {
+                                                                FirebaseRepository.setTripStatus(groupId, uid, TripStatus.ARRIVED)
+                                                                Log.i("GeofenceService", "Auto-updated trip status to ARRIVED for user $uid in group $groupId")
+                                                            } catch (e: Exception) {
+                                                                Log.e("GeofenceService", "Failed to update trip status: ${e.message}")
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // --- UPDATED: Show local notification to the user (only if trip is active) ---
+                                                    notifyUserOfArrival(groupId, groupSnap.child("title").getValue(String::class.java) ?: "Group", currentTripStatus)
+
+                                                    // Send notification to other group members
                                                     sendMemberArrivedNotification(groupId, groupSnap.child("title").getValue(String::class.java) ?: "Group", uid)
                                                     Log.i("GeofenceService", "✓ Member $uid arrived at geofence in group $groupId")
                                                 } else if (!isInside && arrivedSet.contains(uid)) {
@@ -266,6 +288,36 @@ class GeofenceMonitorService : Service() {
             } catch (e: Exception) {
                 Log.e("GeofenceService", "Error sending arrival notification", e)
             }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun notifyUserOfArrival(groupId: String, groupTitle: String, tripStatus: String?) {
+        // Only show notification if user is on an active trip (TRAVELLING)
+        if (tripStatus == TripStatus.TRAVELLING.name) {
+            // Create and show a local notification to the user
+            val manager = getSystemService(NotificationManager::class.java)
+            val notification = NotificationCompat.Builder(this, ARRIVAL_NOTIFICATION_CHANNEL_ID)
+                .setContentTitle("Arrival")
+                .setContentText("You arrived at Geofence of group $groupTitle")
+                .setSmallIcon(com.example.watchstop.R.drawable.ic_notification_arrival)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .build()
+
+            manager?.notify("arrival_$groupId".hashCode(), notification)
+
+            // Optional: Add a brief vibration to make it more noticeable
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator?.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(500)
+            }
+
+            Log.d("GeofenceService", "Notified user of arrival at group $groupTitle (trip active)")
+        } else {
+            Log.d("GeofenceService", "Skipped arrival notification for group $groupTitle (trip inactive)")
         }
     }
 

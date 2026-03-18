@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.*
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -227,92 +228,66 @@ fun ViewGroupMapScreen(groupId: String) {
             }
         }
 
-        // Legend Card (Top-left)
-        Card(
+        // Top-right button group
+        Column(
             modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(12.dp),
-            shape = RoundedCornerShape(8.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
-            ),
-            elevation = CardDefaults.cardElevation(4.dp)
+                .align(Alignment.TopEnd)
+                .padding(8.dp),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text(
-                    text = groupTitle,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-
-                if (geofenceName.isNotEmpty()) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(bottom = 6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.LocationOn,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = geofenceName,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                val sharingCount = groupMembers.count { locationSharingEnabled[it] == true }
-                Text(
-                    text = "Members ($sharingCount/${groupMembers.size})",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        // Pan to Geofence Button (Top-center)
-        if (geofenceCenter != null) {
+            // Close Button
             IconButton(
-                onClick = {
-                    scope.launch {
-                        cameraPositionState.animate(
-                            update = CameraUpdateFactory.newLatLngZoom(geofenceCenter!!, 14f),
-                            durationMs = 800
-                        )
-                    }
-                },
+                onClick = { (context as? AppCompatActivity)?.finish() },
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 12.dp)
                     .background(
                         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
                         shape = RoundedCornerShape(8.dp)
                     )
+                    .size(40.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.LocationOn,
-                    contentDescription = "Pan to Geofence",
-                    tint = MaterialTheme.colorScheme.primary
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Close",
+                    tint = MaterialTheme.colorScheme.onSurface
                 )
+            }
+
+            // Pan to Geofence Button
+            if (geofenceCenter != null) {
+                IconButton(
+                    onClick = {
+                        scope.launch {
+                            cameraPositionState.animate(
+                                update = CameraUpdateFactory.newLatLngZoom(geofenceCenter!!, 14f),
+                                durationMs = 800
+                            )
+                        }
+                    },
+                    modifier = Modifier
+                        .background(
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = "Pan to Geofence",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
 
-        // Member List Card (Bottom-left)
+        // Combined Info & Members Card (Bottom)
         Card(
             modifier = Modifier
-                .align(Alignment.BottomStart)
+                .align(Alignment.BottomCenter)
                 .padding(12.dp)
-                .heightIn(max = 300.dp)
-                .widthIn(max = 320.dp),
-            shape = RoundedCornerShape(8.dp),
+                .fillMaxWidth()
+                .heightIn(max = 350.dp),
+            shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
             ),
@@ -320,21 +295,79 @@ fun ViewGroupMapScreen(groupId: String) {
         ) {
             Column(
                 modifier = Modifier
-                    .padding(12.dp)
-                    .verticalScroll(rememberScrollState())
+                    .fillMaxWidth()
+                    .padding(16.dp)
             ) {
+                // Group Info Section
                 Text(
-                    text = "Active Members",
-                    fontSize = 12.sp,
+                    text = "Group Info",
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 8.dp),
-                    color = if (darkmode) Color.White else Color.Black
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 8.dp)
                 )
 
-                groupMembers.forEach { memberId ->
-                    val isSharing = locationSharingEnabled[memberId] ?: false
+                Text(
+                    text = groupTitle,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
 
-                    if (isSharing) {
+                if (geofenceName.isNotEmpty()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = geofenceName,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                )
+
+                // Active Members Section
+                Text(
+                    text = "Active Members",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 180.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    val activeMembers = groupMembers.filter { locationSharingEnabled[it] == true }
+
+                    val sharingCount = groupMembers.count { locationSharingEnabled[it] == true }
+                    Text(
+                        text = "$sharingCount of ${groupMembers.size} members sharing location",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+
+                    activeMembers.forEach { memberId ->
                         val memberName = memberNames[memberId] ?: memberId
                         val memberRole = memberRoles[memberId] ?: GroupRole.MEMBER
                         val memberTripStatus = tripStatus[memberId] ?: TripStatus.INACTIVE
@@ -346,34 +379,7 @@ fun ViewGroupMapScreen(groupId: String) {
                         )
                     }
                 }
-
-                if (groupMembers.none { locationSharingEnabled[it] == true }) {
-                    Text(
-                        text = "No members sharing location",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-                }
             }
-        }
-
-        // Close Button (Top-right)
-        IconButton(
-            onClick = { (context as? AppCompatActivity)?.finish() },
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(8.dp)
-                .background(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                    shape = RoundedCornerShape(8.dp)
-                )
-        ) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = "Close",
-                tint = MaterialTheme.colorScheme.onSurface
-            )
         }
     }
 }

@@ -21,9 +21,7 @@
     },
     "uids": {
       ".read": "auth != null",
-      "$uid": {
-        ".write": "$uid === auth.uid"
-      }
+      "$uid": { ".write": "$uid === auth.uid" }
     },
     "usernames": {
       ".read": "auth != null",
@@ -50,36 +48,42 @@
     "groups": {
       "$groupId": {
         ".read": "auth != null && (data.child('memberIds').child(auth.uid).exists() || data.child('pendingInvitations').child(auth.uid).exists())",
-        
-        // Root write only for admins or group creation
         ".write": "auth != null && (!data.exists() || data.child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || data.child('memberRoles').child(auth.uid).val() === 'ADMIN')",
-        
+
         "pendingInvitations": {
           "$uid": {
             ".write": "auth != null && ($uid === auth.uid || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
           }
         },
+        "geofence": {
+          ".read": "auth != null && (root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists() || root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists())",
+          ".write": "auth != null && (root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')",
+          ".validate": "newData.val() === null || (newData.hasChildren(['id', 'name', 'center', 'radius']))"
+        },
+
         "memberIds": {
           "$uid": {
             ".write": "auth != null && ($uid === auth.uid || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
           }
         },
+
+        "memberCount": {
+          ".validate": "newData.isNumber() && newData.val() >= 0",
+          ".write": "auth != null && (root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN' || root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists() || root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists())"
+        },
+
         "memberRoles": {
           "$uid": {
-            ".write": "auth != null && (
-              ($uid === auth.uid && (root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists() || newData.val() === null))
-              || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN'
-              || (newData.val() === 'MEMBER' &&
-                  root.child('groups').child($groupId).child('memberRoles').child($uid).val() === 'ADMIN' &&
-                  root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists())
-            )"
+            ".write": "auth != null && (($uid === auth.uid && (root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists() || newData.val() === null)) || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || (newData.val() === 'MEMBER' && data.val() === 'ADMIN' && root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists() && root.child('groups').child($groupId).child('voteCountsToRemoveAdmin').child($uid).exists() && root.child('groups').child($groupId).child('voteCountsToRemoveAdmin').child($uid).val() > (root.child('groups').child($groupId).child('memberCount').val() / 2)))"
           }
         },
+
         "adminApplications": {
           "$uid": {
             ".write": "auth != null && $uid === auth.uid && root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists()"
           }
         },
+
         "adminApplicationVotes": {
           "$applicantUid": {
             "$voterUid": {
@@ -87,29 +91,52 @@
             }
           }
         },
+
         "votesToRemoveAdmin": {
           "$targetUid": {
+            // FIX: allow any member to null-out the whole vote tree during the demote batch.
+            // Rules are evaluated against pre-update state, so $targetUid is still ADMIN
+            // at evaluation time even though memberRoles is being updated in the same batch.
+            ".write": "auth != null && newData.val() === null && root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists() && root.child('groups').child($groupId).child('memberRoles').child($targetUid).val() === 'ADMIN'",
             "$voterUid": {
-              ".write": "auth != null &&
-                         $voterUid === auth.uid &&
-                         root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists() &&
-                         root.child('groups').child($groupId).child('memberRoles').child($targetUid).val() === 'ADMIN'"
+              // Individual vote — one per user, cast once only (!data.exists())
+              ".write": "auth != null && $voterUid === auth.uid && root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists() && root.child('groups').child($groupId).child('memberRoles').child($targetUid).val() === 'ADMIN' && !data.exists()"
             }
           }
         },
+        "removalAbstentions": {
+          "$targetUid": {
+            "$voterUid": {
+              ".write": "auth != null && $voterUid === auth.uid && root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists()"
+            }
+          }
+        },
+        "voteCountsToRemoveAdmin": {
+          "$targetUid": {
+            // FIX: validate accepts null (cleanup) OR a non-negative number
+            ".validate": "newData.val() === null || (newData.isNumber() && newData.val() >= 0)",
+            // FIX: any member may increment the counter while the target is ADMIN,
+            // or set it to null (cleanup after demotion)
+            ".write": "auth != null && root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists() && (root.child('groups').child($groupId).child('memberRoles').child($targetUid).val() === 'ADMIN' || newData.val() === null)"
+          }
+        },
+
+        "canToggleSharing": {
+          "$uid": {
+            // FIX: added vote-threshold branch so the demote batch can set this to false
+            ".write": "auth != null && (($uid === auth.uid && (root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists() || root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists() || newData.val() === null)) || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN' || (newData.val() === false && root.child('groups').child($groupId).child('memberRoles').child($uid).val() === 'ADMIN' && root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists() && root.child('groups').child($groupId).child('voteCountsToRemoveAdmin').child($uid).exists() && root.child('groups').child($groupId).child('voteCountsToRemoveAdmin').child($uid).val() > (root.child('groups').child($groupId).child('memberCount').val() / 2)))"
+          }
+        },
+
+        "locationSharingEnabled": {
+          "$uid": {
+            ".write": "auth != null && (($uid === auth.uid && (root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists() || root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists() || newData.val() === null)) || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
+          }
+        },
+
         "tripStatus": {
           "$uid": {
             ".write": "auth != null && $uid === auth.uid"
-          }
-        },
-        "locationSharingEnabled": {
-          "$uid": {
-            ".write": "auth != null && ($uid === auth.uid && (root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists() || root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists() || newData.val() === null) || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
-          }
-        },
-        "canToggleSharing": {
-          "$uid": {
-            ".write": "auth != null && (($uid === auth.uid && (root.child('groups').child($groupId).child('pendingInvitations').child(auth.uid).exists() || root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists() || newData.val() === null)) || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'SUPER_ADMIN' || root.child('groups').child($groupId).child('memberRoles').child(auth.uid).val() === 'ADMIN')"
           }
         }
       }
