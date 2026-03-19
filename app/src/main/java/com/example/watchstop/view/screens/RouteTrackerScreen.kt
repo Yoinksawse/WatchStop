@@ -83,6 +83,7 @@ fun RouteTrackerScreen() {
     var isRouteSaved by remember { mutableStateOf(false) }
     var showPermissionDialog by remember { mutableStateOf(false) }
     var isCheckingLocation by remember { mutableStateOf(false) }
+    var isShowingRoute by remember { mutableStateOf(false) }
 
     //route info
     val pathPoints = remember { mutableStateListOf<PathPoint>() }
@@ -128,6 +129,7 @@ fun RouteTrackerScreen() {
                 if (loc != null) {
                     //location available => start tracking
                     isTracking = true
+                    isShowingRoute = false
                     if (startTime == 0L) startTime = System.currentTimeMillis()
                 } else {
                     //location is null
@@ -329,13 +331,6 @@ fun RouteTrackerScreen() {
 
     val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
 
-    val toolbarAlignment = remember {
-        mutableStateOf(
-            if (pathPoints.isNotEmpty() && !isTracking) Alignment.TopEnd
-            else Alignment.CenterEnd
-        )
-    }
-    val toolbarPadding = if (toolbarAlignment == Alignment.TopEnd) 64.dp else 0.dp
     //END END END END END END END END END END END BEGIN LIFECYCLE UPDATES
 
     //BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN ui components
@@ -438,8 +433,11 @@ fun RouteTrackerScreen() {
 
         Column(
             modifier = Modifier
-                .align(toolbarAlignment.value)
-                .padding(top = toolbarPadding, end = 16.dp)
+                .align(if (!isShowingRoute) Alignment.CenterEnd else Alignment.TopEnd)
+                .padding(
+                    top = if (isShowingRoute) 80.dp else 16.dp,
+                    end = 16.dp
+                )
                 .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(24.dp))
                 .padding(8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -449,12 +447,12 @@ fun RouteTrackerScreen() {
                 Icon(Icons.Default.Settings, tint = Color.White, contentDescription = "Settings")
             }
 
-            //2. pause/track button
             IconButton(
                 onClick = {
                     if (isTracking) {
                         // Stop tracking
                         isTracking = false
+                        isShowingRoute = true
                     } else {
                         // Check location and start tracking
                         checkLocationAndStartTracking()
@@ -506,6 +504,7 @@ fun RouteTrackerScreen() {
                     pinFraction = 1f
                     pinExpanded = false
                     isRouteSaved = false
+                    isShowingRoute = false
                 }
             ) {
                 Icon(
@@ -702,6 +701,7 @@ fun RouteTrackerScreen() {
                                             .clickable {
                                                 // LOAD LOGIC
                                                 isTracking = false
+                                                isShowingRoute = true
                                                 pathPoints.clear()
                                                 pathPoints.addAll(route.points)
                                                 totalDistanceMeters = route.distanceMeters
