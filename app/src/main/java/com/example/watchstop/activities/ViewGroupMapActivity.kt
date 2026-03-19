@@ -47,13 +47,10 @@ import com.google.maps.android.compose.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-
-
 var TRAVELLING_COLOUR = Color(0xFFFF9500)
 var ARRIVED_COLOUR = NICEGREEN_COLOUR
 var INACTIVE_COLOUR = Color(0xFF8E8E93)
 class ViewGroupMapActivity : AppCompatActivity() {
-
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

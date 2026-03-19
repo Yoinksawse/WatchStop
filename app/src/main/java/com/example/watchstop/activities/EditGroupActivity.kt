@@ -894,15 +894,15 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                             Icon(
                                                 Icons.Default.LocationOn,
                                                 contentDescription = null,
-                                                tint = if (selectedGeofenceId != null) outlineColor else Color.Gray,
+                                                tint = if (selectedGeofenceId.isNotEmpty() || isExistingGroupGeofence)
+                                                    outlineColor else Color.Gray, //ui stuff: grey for no geofence selected
                                                 modifier = Modifier.size(18.dp)
                                             )
                                             Text(
                                                 text = selectedGeofenceName,
-                                                color = if (selectedGeofenceId != null)
+                                                color = if (selectedGeofenceId.isNotEmpty() || isExistingGroupGeofence)
                                                     MaterialTheme.colorScheme.onSurface
-                                                else
-                                                    Color.Gray,
+                                                else Color.Gray, //ui stuff: grey for no geofence selected
                                                 fontSize = 14.sp
                                             )
                                         }

@@ -12,6 +12,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
@@ -42,12 +43,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.watchstop.model.ShapeState
-import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.random.Random
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.res.painterResource
+import com.example.watchstop.R
 
 class OnboardingActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
@@ -80,14 +82,38 @@ fun OnboardingReactive(
     darkmode: Boolean,
     onFinish: () -> Unit
 ) {
-    val lines = listOf(
-        "Welcome to the CS4131 Module App. This app has 4 features: \n" +
-        "-An overview of the chapters of the module\n -The module details and assessments \n" +
-        "-Teacher information \n-An assignment planner.",
-        "Other features include a collapsible toolbar with a useful settings button\n" +
-        "and a floating action button to email the teacher quickly.",
-        "You can also switch between dark and light mode, as well as display the chapters in card view or list view.",
-        "Good luck for the module!."
+    val items = listOf(
+        OnboardingItem(
+            "Welcome to WatchStop!\n\nA multi-functional location services app designed to help you navigate, track, and coordinate with ease.",
+            R.drawable.onboarding_watchstoplogopic
+        ),
+        OnboardingItem(
+            "Geofences\n\nCreate custom areas on the map using circles or freehand polygons.\nThese power alarms, groups, and tracking features.",
+            R.drawable.onboarding_geofences
+        ),
+        OnboardingItem(
+            "GeoAlarms\n\nSet location-based alarms that trigger when you enter a selected area.\nNever miss your stop again while commuting.",
+            R.drawable.onboarding_geoalarms
+        ),
+        OnboardingItem(
+            "Route Tracker\n\nRecord your movement in real time and replay your route.\nView distance, speed, and past positions with precision.",
+            R.drawable.onboarding_route
+        ),
+        OnboardingItem(
+            "Group Location Sharing\n\nCreate groups to share live locations.\nCoordinate meetups and track members in real time on a shared map.",
+            R.drawable.onboarding_groups
+        ),
+        OnboardingItem(
+            "Smart Scheduling\n\nActivate GeoAlarms by time, date, or day of week.\nFlexible scheduling ensures alarms trigger only when needed.",
+            R.drawable.onboarding_schedule
+        ),
+        OnboardingItem(
+            "Cloud Sync & Profiles\n\nSave geofences, routes, and preferences securely.\nAccess your data anytime by logging in.",
+            R.drawable.onboarding_firebasepic
+        ),
+        OnboardingItem(
+            "Let's begin!\n\nSet up your first GeoAlarm or create a group."
+        )
     )
 
     val shapes = remember {
@@ -109,7 +135,7 @@ fun OnboardingReactive(
 
     //leaving link stuff
     val listState = rememberLazyListState()
-    val lastIndex = lines.lastIndex
+    val lastIndex = items.lastIndex
     val linkAlpha = remember { Animatable(0f) }
 
     LaunchedEffect(listState) {
@@ -182,10 +208,10 @@ fun OnboardingReactive(
             LazyColumn(
                 state = listState,
                     modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.Center,
+                verticalArrangement = Arrangement.spacedBy(32.dp),
                 flingBehavior = rememberSnapFlingBehavior(lazyListState = listState)
             ) {
-                itemsIndexed(lines) { index, line ->
+                itemsIndexed(items) { index, item ->
                     val itemInfo = listState.layoutInfo.visibleItemsInfo
                         .firstOrNull { it.index == index }
                     val screenHeight = listState.layoutInfo.viewportEndOffset
@@ -220,21 +246,46 @@ fun OnboardingReactive(
                             modifier = Modifier
                                 .shadow(6.dp, RoundedCornerShape(16.dp))
                                 .background(
-                                    Color.White.copy(alpha = 0.9f),
+                                    if (darkmode)
+                                        Color(0xFF2C2C2C).copy(alpha = 0.9f)
+                                    else
+                                        Color.White.copy(alpha = 0.9f),
                                     shape = RoundedCornerShape(16.dp)
                                 )
-                                .padding(horizontal = 20.dp, vertical = 12.dp)
+                                .padding(horizontal = 20.dp, vertical = 20.dp)
+                                .fillMaxWidth()
+                                .wrapContentHeight()
+                                .align(Alignment.Center)
                         ) {
-                            Text(
-                                text = line,
-                                textAlign = TextAlign.Center,
-                                color = Color.Black.copy(alpha = alpha),
-                                style = TextStyle(
-                                    fontSize = 20.sp,
-                                    //fontWeight = FontWeight.SemiBold,
-                                    letterSpacing = 0.3.sp
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                item.imageRes?.let {
+                                    Image(
+                                        painter = painterResource(id = it),
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .fillMaxWidth(0.8f)
+                                            .heightIn(min = 180.dp, max = 320.dp)
+                                            .padding(bottom = 12.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Text(
+                                    text = item.text,
+                                    textAlign = TextAlign.Center,
+                                    color = if (darkmode) Color.White.copy(alpha = alpha)
+                                        else Color.Black.copy(alpha = alpha),
+                                    style = TextStyle(
+                                        fontSize = 20.sp,
+                                        letterSpacing = 0.3.sp
+                                    )
                                 )
-                            )
+                            }
                         }
 
                         Icon(
@@ -275,3 +326,8 @@ fun OnboardingReactive(
         }
     }
 }
+
+data class OnboardingItem(
+    val text: String,
+    val imageRes: Int? = null
+)
