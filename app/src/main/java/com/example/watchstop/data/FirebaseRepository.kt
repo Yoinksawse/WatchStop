@@ -951,7 +951,7 @@ object FirebaseRepository {
     }
 
     /**
-     * Fixed saveGeofenceToFirebase to use the same structure as saveGeofence
+     * Save a geofence to Firebase
      */
     fun saveGeofenceToFirebase(
         database: DatabaseReference,
@@ -982,30 +982,51 @@ object FirebaseRepository {
             "geoAlarmId" to geofence.geoAlarmId
         )
 
+        Log.d("FirebaseRepository", "saving geofence: ${geofence.id} for user: $uid")
+
         database.child("geofences").child(uid).child(geofence.id)
             .setValue(data)
             .addOnSuccessListener {
                 Toast.makeText(context, "Geofence Saved to Cloud", Toast.LENGTH_SHORT).show()
+                Log.d("FirebaseRepository", "Geofence saved successfully: ${geofence.id}")
             }
-            .addOnFailureListener {
-                Toast.makeText(context, "Failed to save geofence", Toast.LENGTH_SHORT).show()
-                Log.e("FirebaseRepository", "Geofence upload failed", it)
+            .addOnFailureListener { e ->
+                Toast.makeText(context, "Failed to save geofence: ${e.message}", Toast.LENGTH_SHORT).show()
+                Log.e("FirebaseRepository", "Geofence upload failed", e)
             }
     }
 
+    /**
+     * Delete a geofence from Firebase using its ID
+     */
     fun deleteGeofenceFromFirebase(
         database: DatabaseReference,
         userId: String,
-        geofenceName: String,
+        geofenceId: String,
         context: Context
     ) {
         if (userId.isEmpty()) {
-            Toast.makeText(context, "Fatal error occurred. this toast should never be shown", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "User not logged in", Toast.LENGTH_SHORT).show()
             return
         }
-        val key = geofenceName.filter { it.isLetterOrDigit() }
-        database.child(userId).child(key).removeValue()
-        Toast.makeText(context, "Geofence Deleted from Cloud", Toast.LENGTH_SHORT).show()
+
+        if (geofenceId.isEmpty()) {
+            Toast.makeText(context, "Invalid geofence ID", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        Log.d("FirebaseRepository", "Attempting to delete geofence: $geofenceId for user: $userId")
+
+        database.child("geofences").child(userId).child(geofenceId)
+            .removeValue()
+            .addOnSuccessListener {
+                Toast.makeText(context, "Geofence deleted from cloud", Toast.LENGTH_SHORT).show()
+                Log.d("FirebaseRepository", "Geofence deleted successfully: $geofenceId")
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(context, "Failed to delete geofence: ${e.message}", Toast.LENGTH_SHORT).show()
+                Log.e("FirebaseRepository", "Geofence delete failed", e)
+            }
     }
 
     // ── Group Geofence ─────────────────────────────────────────────────────
@@ -1036,15 +1057,6 @@ object FirebaseRepository {
             groupRef.setValue(data).await()
             Log.d("FirebaseRepository", "setGroupGeofence: set geofence for group $groupId with ID=${geofence.id}")
         }
-    }
-
-    /**
-     * Remove the group's geofence. Only Admins/SuperAdmins can call this.
-     */
-    suspend fun removeGroupGeofence(groupId: String) {
-        ensureAuth()
-        db.child("groups").child(groupId).child("geofence").removeValue().await()
-        Log.d("FirebaseRepository", "removeGroupGeofence: removed geofence from group $groupId")
     }
 
     /**

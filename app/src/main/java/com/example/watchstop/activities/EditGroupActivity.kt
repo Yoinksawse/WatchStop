@@ -688,7 +688,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                             }
                                         },
                                         onClick = {
-                                            selectedGeofenceId = gf.id
+                                            selectedGeofenceId = gf.id //saved when user clicks save changes
                                             gfExpanded = false
                                         }
                                     )

@@ -40,7 +40,7 @@ import androidx.core.content.ContextCompat
 import com.example.watchstop.data.UserGeofencesDatabase
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.model.GeofenceArea
-import com.example.watchstop.data.FirebaseRepository.saveGeofenceToFirebase
+import com.example.watchstop.data.FirebaseRepository
 import com.example.watchstop.view.ui.theme.MapStyles.DARK_MAP_STYLE
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import com.google.android.gms.location.LocationServices
@@ -249,13 +249,22 @@ fun MyGoogleMap() {
                             clickable = true,
                             onClick = {
                                 if (interactionMode == MapInteractionMode.DELETE) {
+                                    // Delete from local
                                     geofences.remove(zone)
                                     UserGeofencesDatabase.removeGeofence(zone, context)
-                                    Toast.makeText(context, "Geofence removed", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    scope.launch {
-                                        cameraPositionState.animate(update = CameraUpdateFactory.newLatLngZoom(zone.center, 15f), durationMs = 1000)
+
+                                    // Delete from Firebase using the correct ID
+                                    val uid = auth.currentUser?.uid
+                                    if (uid != null) {
+                                        FirebaseRepository.deleteGeofenceFromFirebase(
+                                            database = firebaseDb,
+                                            userId = uid,
+                                            geofenceId = zone.id,  // Use ID, not name
+                                            context = context
+                                        )
                                     }
+
+                                    Toast.makeText(context, "Geofence removed", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         )
@@ -268,9 +277,23 @@ fun MyGoogleMap() {
                             clickable = true,
                             onClick = {
                                 if (interactionMode == MapInteractionMode.DELETE) {
+                                    // Delete from local
                                     geofences.remove(zone)
                                     UserGeofencesDatabase.removeGeofence(zone, context)
-                                    Toast.makeText(context, "Geofence removed", Toast.LENGTH_SHORT).show()
+
+                                    // Delete from Firebase
+                                    val uid = auth.currentUser?.uid
+                                    if (uid != null) {
+                                        firebaseDb.child("geofences").child(uid).child(zone.id).removeValue()
+                                            .addOnSuccessListener {
+                                                Toast.makeText(context, "Geofence deleted from cloud", Toast.LENGTH_SHORT).show()
+                                            }
+                                            .addOnFailureListener {
+                                                Toast.makeText(context, "Failed to delete from cloud", Toast.LENGTH_SHORT).show()
+                                            }
+                                    }
+
+                                    Toast.makeText(context, "Geofence removed locally", Toast.LENGTH_SHORT).show()
                                 } else {
                                     scope.launch {
                                         cameraPositionState.animate(update = CameraUpdateFactory.newLatLngZoom(zone.center, 15f), durationMs = 1000)
@@ -324,7 +347,13 @@ fun MyGoogleMap() {
                                     items(cloudGeofencesList) { zone ->
                                         ListItem(
                                             modifier = Modifier.clickable {
-                                                // Load/Center on geofence
+                                                // Add the geofence to the local list if not already present
+                                                if (!geofences.any { it.id == zone.id }) {
+                                                    geofences.add(zone)
+                                                    UserGeofencesDatabase.addGeofence(zone, context)
+                                                }
+
+                                                // Center on the geofence
                                                 scope.launch {
                                                     cameraPositionState.animate(
                                                         update = CameraUpdateFactory.newLatLngZoom(zone.center, 15f),
@@ -335,40 +364,34 @@ fun MyGoogleMap() {
                                             },
                                             headlineContent = { Text(zone.name) },
                                             supportingContent = {
-                                                println(zone.typeId)
-                                                Text(
-                                                    text = when (zone.typeId) {
-                                                        GEOFENCE_TYPE_CIRCULAR -> "Circular • ${zone.radius.toInt()}m radius"
-                                                        GEOFENCE_TYPE_POLYGONAL -> "Polygonal"
-                                                        else -> if (zone.points.isEmpty()) "Circular • Unknown radius" else "Polygonal"
-                                                    }
-                                                )
+                                                val type = when (zone.typeId) {
+                                                    GEOFENCE_TYPE_CIRCULAR -> "Circular"
+                                                    GEOFENCE_TYPE_POLYGONAL -> "Polygonal"
+                                                    else -> if (zone.points.isEmpty()) "Circular" else "Polygonal"
+                                                }
+                                                Text("$type • ${zone.radius.toInt()}m radius")
                                             },
                                             trailingContent = {
                                                 IconButton(onClick = {
-                                                    // Remove from both UI lists
+                                                    // Remove from cloud list
                                                     cloudGeofencesList.remove(zone)
+
+                                                    // Remove from local geofences list
                                                     geofences.removeIf { it.id == zone.id }
 
-                                                    // Sync the authoritative singleton directly
+                                                    // Remove from local database
                                                     UserGeofencesDatabase.removeGeofence(zone, context)
 
-                                                    // If removeGeofence didn't find it (wasn't in memory this session),
-                                                    // force-delete directly from Firebase by re-uploading the current
-                                                    // cloud list minus this item as the new source of truth
-                                                    val uid = auth.currentUser?.uid ?: return@IconButton
-                                                    val remaining = cloudGeofencesList.map { area ->
-                                                        mapOf(
-                                                            "id" to area.id,
-                                                            "name" to area.name,
-                                                            "center" to mapOf("lat" to area.center.latitude, "lng" to area.center.longitude),
-                                                            "typeId" to area.typeId,
-                                                            "radius" to area.radius,
-                                                            "points" to area.points.map { mapOf("lat" to it.latitude, "lng" to it.longitude) },
-                                                            "geoAlarmId" to area.geoAlarmId
+                                                    // Remove from Firebase using the correct ID
+                                                    val uid = auth.currentUser?.uid
+                                                    if (uid != null) {
+                                                        FirebaseRepository.deleteGeofenceFromFirebase(
+                                                            database = firebaseDb,
+                                                            userId = uid,
+                                                            geofenceId = zone.id,  // Use ID, not name
+                                                            context = context
                                                         )
                                                     }
-                                                    firebaseDb.child("geofences").child(uid).setValue(remaining)
                                                 }) {
                                                     Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red)
                                                 }
@@ -417,7 +440,7 @@ fun MyGoogleMap() {
                                             pendingGeofence = GeofenceArea(
                                                 name = "",
                                                 center = center,
-                                                typeId = GEOFENCE_TYPE_POLYGONAL, // Fixed: Using POLYGONAL constant
+                                                typeId = GEOFENCE_TYPE_POLYGONAL,
                                                 radius = radiusMeters,
                                                 points = latLngs
                                             )
@@ -490,8 +513,9 @@ fun MyGoogleMap() {
                                             pendingGeofence = null
                                             Toast.makeText(context, "Geofence saved locally", Toast.LENGTH_SHORT).show()
 
-                                            if (UserProfileObject.isLoggedIn)
-                                                saveGeofenceToFirebase(firebaseDb, finalGeofence, context)
+                                            if (UserProfileObject.isLoggedIn) {
+                                                FirebaseRepository.saveGeofenceToFirebase(firebaseDb, finalGeofence, context)
+                                            }
                                         } else {
                                             Toast.makeText(context, "Please enter a name", Toast.LENGTH_SHORT).show()
                                         }
@@ -566,9 +590,9 @@ fun MyGoogleMap() {
                                     pendingGeofence = GeofenceArea(
                                         name = "",
                                         center = it,
-                                        typeId = GEOFENCE_TYPE_CIRCULAR, // Fixed: Using CIRCULAR constant
+                                        typeId = GEOFENCE_TYPE_CIRCULAR,
                                         radius = radius.toDouble(),
-                                        points = emptyList() // Explicitly empty for circular
+                                        points = emptyList()
                                     )
                                     geofenceNameInput = ""
                                     currentPin = null

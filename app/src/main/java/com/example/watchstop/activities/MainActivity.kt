@@ -72,7 +72,7 @@ import androidx.compose.ui.Alignment
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.example.watchstop.view.ui.theme.LocationAlarm
 
-var debugOnboardingOn = false; //TODO: just for debugging; TURN OFF
+var debugOnboardingOn = true; //TODO: just for debugging; TURN OFF
 
 class MainActivity : AppCompatActivity() {
     @RequiresApi(Build.VERSION_CODES.O)

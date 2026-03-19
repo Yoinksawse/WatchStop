@@ -47,6 +47,7 @@ import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.random.Random
+import androidx.compose.foundation.isSystemInDarkTheme
 
 class OnboardingActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
@@ -55,7 +56,7 @@ class OnboardingActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            WatchStopTheme (){
+            WatchStopTheme (darkTheme = isSystemInDarkTheme()){
                 Scaffold(
                     topBar = {}
                 ) { innerPadding ->
