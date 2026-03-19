@@ -1,5 +1,3 @@
-@file:Suppress("COMPOSE_APPLIER_CALL_MISMATCH")
-
 package com.example.watchstop.view.screens
 
 import android.Manifest
@@ -60,6 +58,10 @@ import com.google.maps.android.compose.*
 import kotlinx.coroutines.launch
 import kotlin.math.*
 
+// Geofence Type Constants
+const val GEOFENCE_TYPE_CIRCULAR = 1
+const val GEOFENCE_TYPE_POLYGONAL = 2
+
 @Composable
 fun MainMapScreen() {
     WatchStopTheme(darkTheme = UserProfileObject.darkmode) {
@@ -81,7 +83,7 @@ fun MyGoogleMap() {
 
     val snackbarHostState = remember { SnackbarHostState() }
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
-    
+
     val geofences = remember { mutableStateListOf<GeofenceArea>() }
     var showHistory by remember { mutableStateOf(false) }
     val cloudGeofencesList = remember { mutableStateListOf<GeofenceArea>() }
@@ -90,7 +92,7 @@ fun MyGoogleMap() {
     var currentPin by remember { mutableStateOf<LatLng?>(null) }
     var radius by remember { mutableFloatStateOf(100f) }
 
-    //fetch existing geofences from firebase for list 
+    //fetch existing geofences from firebase for list
     LaunchedEffect(showHistory) {
         if (showHistory) {
             val userId = auth.currentUser?.uid ?: return@LaunchedEffect
@@ -102,7 +104,7 @@ fun MyGoogleMap() {
                             try {
                                 val id = child.child("id").getValue(String::class.java) ?: return@forEach
                                 val name = child.child("name").getValue(String::class.java) ?: ""
-                                val typeId = child.child("typeId").getValue(Int::class.java) ?: 0
+                                val typeId = child.child("typeId").getValue(Int::class.java) ?: GEOFENCE_TYPE_CIRCULAR
                                 val radius = child.child("radius").getValue(Double::class.java) ?: 0.0
                                 val geoAlarmId = child.child("geoAlarmId").getValue(String::class.java)
 
@@ -138,7 +140,7 @@ fun MyGoogleMap() {
         }
     }
 
-    //sync db on startu[p
+    //sync db on startup
     LaunchedEffect(Unit) {
         geofences.clear()
         geofences.addAll(UserGeofencesDatabase.getAllGeofences())
@@ -209,7 +211,7 @@ fun MyGoogleMap() {
                 ),
                 onMapClick = { latLng ->
                     if (pendingGeofence != null) return@GoogleMap
-                    
+
                     if (interactionMode == MapInteractionMode.SET_PIN) {
                         currentPin = latLng
                         snackbarHostState.currentSnackbarData?.dismiss()
@@ -237,7 +239,7 @@ fun MyGoogleMap() {
                 }
 
                 geofences.forEach { zone ->
-                    if (zone.points.isEmpty()) {
+                    if (zone.typeId == GEOFENCE_TYPE_CIRCULAR || zone.points.isEmpty()) {
                         Circle(
                             center = zone.center,
                             radius = zone.radius,
@@ -277,7 +279,7 @@ fun MyGoogleMap() {
                             }
                         )
                     }
-                    
+
                     //top label
                     Marker(
                         state = MarkerState(position = zone.center),
@@ -286,10 +288,10 @@ fun MyGoogleMap() {
                         alpha = 0.8f
                     )
                 }
-                
+
                 //pending: while naming
                 pendingGeofence?.let { zone ->
-                    if (zone.points.isEmpty()) {
+                    if (zone.typeId == GEOFENCE_TYPE_CIRCULAR || zone.points.isEmpty()) {
                         Circle(
                             center = zone.center,
                             radius = zone.radius,
@@ -333,8 +335,14 @@ fun MyGoogleMap() {
                                             },
                                             headlineContent = { Text(zone.name) },
                                             supportingContent = {
-                                                val type = if (zone.points.isEmpty()) "Circular" else "Polygonal"
-                                                Text("$type • ${zone.radius.toInt()}m radius")
+                                                println(zone.typeId)
+                                                Text(
+                                                    text = when (zone.typeId) {
+                                                        GEOFENCE_TYPE_CIRCULAR -> "Circular • ${zone.radius.toInt()}m radius"
+                                                        GEOFENCE_TYPE_POLYGONAL -> "Polygonal"
+                                                        else -> if (zone.points.isEmpty()) "Circular • Unknown radius" else "Polygonal"
+                                                    }
+                                                )
                                             },
                                             trailingContent = {
                                                 IconButton(onClick = {
@@ -409,7 +417,7 @@ fun MyGoogleMap() {
                                             pendingGeofence = GeofenceArea(
                                                 name = "",
                                                 center = center,
-                                                typeId = 2,
+                                                typeId = GEOFENCE_TYPE_POLYGONAL, // Fixed: Using POLYGONAL constant
                                                 radius = radiusMeters,
                                                 points = latLngs
                                             )
@@ -558,8 +566,9 @@ fun MyGoogleMap() {
                                     pendingGeofence = GeofenceArea(
                                         name = "",
                                         center = it,
-                                        typeId = 1,
-                                        radius = radius.toDouble()
+                                        typeId = GEOFENCE_TYPE_CIRCULAR, // Fixed: Using CIRCULAR constant
+                                        radius = radius.toDouble(),
+                                        points = emptyList() // Explicitly empty for circular
                                     )
                                     geofenceNameInput = ""
                                     currentPin = null
@@ -653,14 +662,14 @@ fun calculatePerimeter(points: List<Offset>): Double {
 fun findMEC(latLngs: List<LatLng>): Pair<LatLng, Double> {
     if (latLngs.isEmpty()) return LatLng(0.0, 0.0) to 0.0
     if (latLngs.size == 1) return LatLng(0.0, 0.0) to 0.0
-    
+
     var p = latLngs[0]
     var q = latLngs.maxBy { dist(p, it) }!!
     var r = latLngs.maxBy { dist(q, it) }!!
-    
+
     var center = LatLng((q.latitude + r.latitude) / 2.0, (q.longitude + r.longitude) / 2.0)
     var radius = dist(q, r) / 2.0
-    
+
     for (s in latLngs) {
         val d = dist(center, s)
         if (d > radius) {

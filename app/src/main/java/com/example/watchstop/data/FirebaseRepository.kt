@@ -852,21 +852,55 @@ object FirebaseRepository {
         awaitClose { ref.removeEventListener(listener) }
     }
 
+    /**
+     * Save a geoalarm with proper geofence linking
+     */
     suspend fun saveGeoAlarm(uid: String, alarm: GeoAlarm) {
-        val alarmData = alarm.toMap()
-        val updates = mapOf(
-            "geoAlarms/$uid/${alarm.id}" to alarmData,
-            "users/$uid/geoAlarms/${alarm.id}" to alarmData
+        // First, if this alarm is linked to a geofence, update that geofence
+        alarm.geofenceId?.let { geofenceId ->
+            // Get the geofence to update it with this alarm ID
+            val geofenceSnapshot = db.child("geofences").child(uid).child(geofenceId).get().await()
+            geofenceSnapshot.toGeofenceArea()?.let { geofence ->
+                // Update the geofence with this alarm ID
+                val updatedGeofence = geofence.copy(geoAlarmId = alarm.id)
+                saveGeofence(uid, updatedGeofence)
+            }
+        }
+
+        // Then save the alarm
+        val alarmData = mapOf(
+            "id" to alarm.id,
+            "name" to alarm.name,
+            "active" to alarm.active,
+            "description" to alarm.description,
+            "geofenceId" to alarm.geofenceId,  // Link to geofence
+            "specificDate" to alarm.specificDate?.toString(),
+            "dayOfWeek" to alarm.dayOfWeek?.name,
+            "startTime" to alarm.startTime?.toString(),
+            "endTime" to alarm.endTime?.toString()
         )
-        db.updateChildren(updates).await()
+
+        db.child("geoAlarms").child(uid).child(alarm.id).setValue(alarmData).await()
     }
 
+    /**
+     * Delete a geoalarm and unlink it from its geofence
+     */
     suspend fun deleteGeoAlarm(uid: String, alarmId: String) {
-        val updates = mapOf(
-            "geoAlarms/$uid/$alarmId" to null,
-            "users/$uid/geoAlarms/$alarmId" to null
-        )
-        db.updateChildren(updates).await()
+        // First, find and update any geofence linked to this alarm
+        val geofencesSnapshot = db.child("geofences").child(uid).get().await()
+        geofencesSnapshot.children.forEach { child ->
+            child.toGeofenceArea()?.let { geofence ->
+                if (geofence.geoAlarmId == alarmId) {
+                    // Remove the link
+                    val updatedGeofence = geofence.copy(geoAlarmId = null)
+                    saveGeofence(uid, updatedGeofence)
+                }
+            }
+        }
+
+        // Then delete the alarm
+        db.child("geoAlarms").child(uid).child(alarmId).removeValue().await()
     }
 
     // ── User Geofences ────────────────────────────────────────────────────
@@ -886,16 +920,28 @@ object FirebaseRepository {
         awaitClose { ref.removeEventListener(listener) }
     }
 
+    /**
+     * Save a geofence with proper type handling
+     */
     suspend fun saveGeofence(uid: String, geofence: GeofenceArea) {
+        // Determine type based on points - if points is empty, it's circular (typeId=1)
+        val typeId = if (geofence.points.isEmpty()) 1 else 2
+
         val data = mapOf(
             "id" to geofence.id,
             "name" to geofence.name,
-            "center" to mapOf("lat" to geofence.center.latitude, "lng" to geofence.center.longitude),
-            "typeId" to geofence.typeId,
-            "radius" to geofence.radius,
-            "points" to geofence.points.map { mapOf("lat" to it.latitude, "lng" to it.longitude) },
-            "geoAlarmId" to geofence.geoAlarmId
+            "typeId" to typeId,  // Store the correct type
+            "center" to mapOf(
+                "lat" to geofence.center.latitude,
+                "lng" to geofence.center.longitude
+            ),
+            "radius" to geofence.radius,  // For circular geofences
+            "points" to geofence.points.map {  // For polygonal geofences
+                mapOf("lat" to it.latitude, "lng" to it.longitude)
+            },
+            "geoAlarmId" to geofence.geoAlarmId  // Link to alarm if exists
         )
+
         db.child("geofences").child(uid).child(geofence.id).setValue(data).await()
     }
 
@@ -904,6 +950,9 @@ object FirebaseRepository {
         db.child("geofences").child(uid).setValue(data).await()
     }
 
+    /**
+     * Fixed saveGeofenceToFirebase to use the same structure as saveGeofence
+     */
     fun saveGeofenceToFirebase(
         database: DatabaseReference,
         geofence: GeofenceArea,
@@ -914,9 +963,27 @@ object FirebaseRepository {
             Toast.makeText(context, "Log in to save Geofence to Cloud", Toast.LENGTH_SHORT).show()
             return
         }
-        val key = geofence.id
-        database.child("geofences").child(uid).child(key)
-            .setValue(geofence)
+
+        // Determine type based on points
+        val typeId = if (geofence.points.isEmpty()) 1 else 2
+
+        val data = mapOf(
+            "id" to geofence.id,
+            "name" to geofence.name,
+            "typeId" to typeId,
+            "center" to mapOf(
+                "lat" to geofence.center.latitude,
+                "lng" to geofence.center.longitude
+            ),
+            "radius" to geofence.radius,
+            "points" to geofence.points.map {
+                mapOf("lat" to it.latitude, "lng" to it.longitude)
+            },
+            "geoAlarmId" to geofence.geoAlarmId
+        )
+
+        database.child("geofences").child(uid).child(geofence.id)
+            .setValue(data)
             .addOnSuccessListener {
                 Toast.makeText(context, "Geofence Saved to Cloud", Toast.LENGTH_SHORT).show()
             }
@@ -1106,17 +1173,33 @@ fun DataSnapshot.toGroupEntry(): GroupEntry? {
 private fun DataSnapshot.toGeofenceArea(): GeofenceArea? {
     val id = child("id").getValue(String::class.java) ?: return null
     val name = child("name").getValue(String::class.java) ?: ""
+
     val centerSnap = child("center")
     val lat = centerSnap.child("lat").getValue(Double::class.java) ?: 0.0
     val lng = centerSnap.child("lng").getValue(Double::class.java) ?: 0.0
     val center = LatLng(lat, lng)
+
     val typeId = child("typeId").getValue(Int::class.java) ?: 0
     val radius = child("radius").getValue(Double::class.java) ?: 0.0
-    val points = child("points").children.mapNotNull { pointSnap ->
-        val pLat = pointSnap.child("lat").getValue(Double::class.java) ?: return@mapNotNull null
-        val pLng = pointSnap.child("lng").getValue(Double::class.java) ?: return@mapNotNull null
-        LatLng(pLat, pLng)
+
+    // Parse points based on type
+    val points = if (typeId == 1) {
+        emptyList()  // Circular geofence - no points
+    } else {
+        child("points").children.mapNotNull { pointSnap ->
+            val pLat = pointSnap.child("lat").getValue(Double::class.java) ?:
+            pointSnap.child("latitude").getValue(Double::class.java)
+            val pLng = pointSnap.child("lng").getValue(Double::class.java) ?:
+            pointSnap.child("longitude").getValue(Double::class.java)
+
+            if (pLat != null && pLng != null) {
+                LatLng(pLat, pLng)
+            } else {
+                null
+            }
+        }
     }
+
     val geoAlarmId = child("geoAlarmId").getValue(String::class.java)
 
     return GeofenceArea(
@@ -1129,6 +1212,7 @@ private fun DataSnapshot.toGeofenceArea(): GeofenceArea? {
         geoAlarmId = geoAlarmId
     )
 }
+
 
 private fun GeoAlarm.toMap(): Map<String, Any?> = mapOf(
     "id" to id, "name" to name, "active" to active,
