@@ -579,27 +579,36 @@ object FirebaseRepository {
     suspend fun voteForAdminApplication(groupId: String, applicantUid: String, voterUid: String) {
         ensureAuth()
         val groupRef = db.child("groups").child(groupId)
-        val snap = groupRef.get().await()
-        val entry = snap.toGroupEntry() ?: return
 
-        // 1. Increment vote count
-        val currentVotes = entry.adminApplicationVotes[applicantUid]?.size ?: 0
-        val voteUpdates = mapOf(
-            voterUid to true,
-            "count" to currentVotes + 1
-        )
-        groupRef.child("adminApplicationVotes").child(applicantUid).updateChildren(voteUpdates).await()
+        // 1. Write only the voter's own UID — satisfies $voterUid === auth.uid rule
+        groupRef
+            .child("adminApplicationVotes")
+            .child(applicantUid)
+            .child(voterUid)
+            .setValue(true)
+            .await()
 
-        // 2. Re-evaluate threshold
+        // 2. Re-fetch and count actual child keys (no embedded "count" key)
         val freshSnap = groupRef.get().await()
         val totalMembers = freshSnap.child("memberCount").getValue(Int::class.java) ?: 1
-        val updatedVotes = freshSnap.child("adminApplicationVotes").child(applicantUid).child("count").getValue(Int::class.java) ?: 0
+        val voteCount = freshSnap
+            .child("adminApplicationVotes")
+            .child(applicantUid)
+            .childrenCount
+            .toInt()
 
-        if (updatedVotes >= (totalMembers / 2)) {
+        val voterRole = freshSnap
+            .child("memberRoles")
+            .child(voterUid)
+            .getValue(String::class.java)
+        val isSuperAdmin = voterRole == GroupRole.SUPER_ADMIN.name
+
+        // 3. Promote immediately if super admin voted, or threshold met (majority of non-applicant members)
+        if (isSuperAdmin || voteCount > ((totalMembers - 1) / 2)) {
             val promoteUpdates = mapOf<String, Any?>(
-                "memberRoles/$applicantUid" to "ADMIN",
-                "canToggleSharing/$applicantUid" to true,
-                "adminApplications/$applicantUid" to null,
+                "memberRoles/$applicantUid"           to GroupRole.ADMIN.name,
+                "canToggleSharing/$applicantUid"      to true,
+                "adminApplications/$applicantUid"     to null,
                 "adminApplicationVotes/$applicantUid" to null
             )
             groupRef.updateChildren(promoteUpdates).await()
@@ -1164,13 +1173,16 @@ fun DataSnapshot.toGroupEntry(): GroupEntry? {
         .mapNotNull { it.key }.toMutableSet()
 
     val applicationVotes = child("adminApplicationVotes").children.associate { snap ->
-        (snap.key ?: "") to snap.children.mapNotNull { it.key }.toMutableSet()
+        (snap.key ?: "") to snap.children
+            .filter { it.key != "count" }
+            .mapNotNull { it.key }
+            .toMutableSet()
     }.toMutableMap()
 
     val removalVotes = child("votesToRemoveAdmin").children.associate { targetSnap ->
         val targetUid = targetSnap.key ?: ""
         val voters = targetSnap.children
-            .filter { it.key != "count" }   // guard: never treat a stale "count" child as a UID
+            .filter { it.key != "count" }
             .mapNotNull { it.key }
             .toMutableSet()
         targetUid to voters

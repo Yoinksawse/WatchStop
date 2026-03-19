@@ -23,7 +23,6 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.key
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,7 +82,6 @@ fun RouteTrackerScreen() {
     var isRouteSaved by remember { mutableStateOf(false) }
     var showPermissionDialog by remember { mutableStateOf(false) }
     var isCheckingLocation by remember { mutableStateOf(false) }
-    var isShowingRoute by remember { mutableStateOf(false) }
 
     //route info
     val pathPoints = remember { mutableStateListOf<PathPoint>() }
@@ -129,7 +127,6 @@ fun RouteTrackerScreen() {
                 if (loc != null) {
                     //location available => start tracking
                     isTracking = true
-                    isShowingRoute = false
                     if (startTime == 0L) startTime = System.currentTimeMillis()
                 } else {
                     //location is null
@@ -433,9 +430,9 @@ fun RouteTrackerScreen() {
 
         Column(
             modifier = Modifier
-                .align(if (!isShowingRoute) Alignment.CenterEnd else Alignment.TopEnd)
+                .align(if (!showPin) Alignment.CenterEnd else Alignment.TopEnd)
                 .padding(
-                    top = if (isShowingRoute) 80.dp else 16.dp,
+                    top = if (showPin) 80.dp else 16.dp,
                     end = 16.dp
                 )
                 .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(24.dp))
@@ -452,7 +449,6 @@ fun RouteTrackerScreen() {
                     if (isTracking) {
                         // Stop tracking
                         isTracking = false
-                        isShowingRoute = true
                     } else {
                         // Check location and start tracking
                         checkLocationAndStartTracking()
@@ -504,7 +500,6 @@ fun RouteTrackerScreen() {
                     pinFraction = 1f
                     pinExpanded = false
                     isRouteSaved = false
-                    isShowingRoute = false
                 }
             ) {
                 Icon(
@@ -701,7 +696,6 @@ fun RouteTrackerScreen() {
                                             .clickable {
                                                 // LOAD LOGIC
                                                 isTracking = false
-                                                isShowingRoute = true
                                                 pathPoints.clear()
                                                 pathPoints.addAll(route.points)
                                                 totalDistanceMeters = route.distanceMeters

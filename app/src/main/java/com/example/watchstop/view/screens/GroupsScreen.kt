@@ -366,23 +366,47 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
                         ) { Text("Decline") }
                     }
                     is NotificationItem.AdminApplication -> {
+                        var processing by remember { mutableStateOf(false) }
                         Button(
                             onClick = {
+                                if (processing) return@Button
+                                processing = true
                                 appScope.launch {
-                                    FirebaseRepository.voteForAdminApplication(
-                                        item.groupId, item.applicantUid, UserProfileObject.uid ?: "")
+                                    try {
+                                        // Approve = direct promotion, same as the Promote button in EditGroupActivity
+                                        FirebaseRepository.promoteToAdmin(item.groupId, item.applicantUid)
+                                        // Also clean up the application entry
+                                        FirebaseRepository.declineAdminApplication(item.groupId, item.applicantUid)
+                                    } catch (e: Exception) {
+                                        Log.e("NotificationRow", "promoteToAdmin failed: ${e.message}")
+                                        processing = false
+                                    }
                                 }
                             },
+                            enabled = !processing,
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF))
-                        ) { Text("Approve") }
+                        ) {
+                            if (processing) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                            } else {
+                                Text("Approve")
+                            }
+                        }
                         OutlinedButton(
                             onClick = {
+                                if (processing) return@OutlinedButton
+                                processing = true
                                 appScope.launch {
-                                    FirebaseRepository.declineAdminApplication(
-                                        item.groupId, item.applicantUid)
+                                    try {
+                                        FirebaseRepository.declineAdminApplication(item.groupId, item.applicantUid)
+                                    } catch (e: Exception) {
+                                        Log.e("NotificationRow", "declineAdminApplication failed: ${e.message}")
+                                        processing = false
+                                    }
                                 }
                             },
+                            enabled = !processing,
                             modifier = Modifier.weight(1f)
                         ) { Text("Decline", color = Color(0xFFFF3B30)) }
                     }

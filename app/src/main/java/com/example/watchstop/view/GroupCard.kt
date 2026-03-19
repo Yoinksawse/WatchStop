@@ -14,7 +14,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.HowToVote
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -63,7 +62,7 @@ fun GroupCard(
     val snapshot = remember { CurrentGroupObject.getCurrentGroupEntry() }
 
     // Current user's UID — read at composition, stable after login
-    var myName by remember { mutableStateOf("") }
+    var demoteConfirmationText by remember { mutableStateOf("") }
     val currentUid = UserProfileObject.uid ?: ""
 
     // Expansion state for the entire card
@@ -616,8 +615,8 @@ fun GroupCard(
                                     if (!isTargetSuperAdmin && isSuperAdmin) {
                                         Text("Type 'DEMOTE' to confirm:")
                                         OutlinedTextField(
-                                            value = myName,
-                                            onValueChange = { myName = it },
+                                            value = demoteConfirmationText,
+                                            onValueChange = { demoteConfirmationText = it },
                                             label = { Text("Confirmation") },
                                             singleLine = true
                                         )
@@ -677,13 +676,9 @@ fun GroupCard(
                                             }
                                         }
                                         showRemovalDialogFor = null
-                                        myName = ""
+                                        demoteConfirmationText = ""
                                     },
-                                    enabled = when {
-                                        isTargetSuperAdmin && isSuperAdmin -> myName == "REMOVE"
-                                        isTargetAdmin && isSuperAdmin -> myName == "DEMOTE"
-                                        else -> true
-                                    }
+                                    enabled = if (isTargetAdmin && isSuperAdmin) demoteConfirmationText == "DEMOTE" else true
                                 ) {
                                     Text(
                                         when {
@@ -696,7 +691,7 @@ fun GroupCard(
                             dismissButton = {
                                 TextButton(onClick = {
                                     showRemovalDialogFor = null
-                                    myName = ""
+                                    demoteConfirmationText = ""
                                 }) {
                                     Text("Cancel")
                                 }

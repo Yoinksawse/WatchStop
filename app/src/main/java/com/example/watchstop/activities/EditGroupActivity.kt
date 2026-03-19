@@ -382,7 +382,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                     }
 
                                     // Promote button only for MEMBER when currentIsSuperAdmin
-                                    if (role == GroupRole.MEMBER && currentIsSuperAdmin) {
+                                    if (role == GroupRole.MEMBER) {
                                         OutlinedButton(
                                             onClick = {
                                                 memberRoles[member] = GroupRole.ADMIN
@@ -444,34 +444,24 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                     Text(appName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                                     Text("${votes.size}/$needed approvals needed", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                // FIX: Approve now calls FirebaseRepository.voteForAdminApplication
-                                // directly (which uses groupRef with relative paths — admin safe)
-                                // before updating local state, instead of only updating local state.
                                 TextButton(
                                     onClick = {
                                         coroutineScope.launch {
                                             try {
-                                                FirebaseRepository.voteForAdminApplication(
-                                                    groupId, applicant, currentUser)
-                                                votes.add(currentUser)
-                                                if (currentIsSuperAdmin || votes.size >= needed) {
-                                                    memberRoles[applicant] = GroupRole.ADMIN
-                                                    canToggle[applicant] = true
-                                                    adminApplications.remove(applicant)
-                                                    appVotes.remove(applicant)
-                                                }
+                                                FirebaseRepository.promoteToAdmin(groupId, applicant)
+                                                FirebaseRepository.declineAdminApplication(groupId, applicant) // cleans up the application
+                                                // Update local UI state immediately
+                                                memberRoles[applicant] = GroupRole.ADMIN
+                                                canToggle[applicant] = true
+                                                adminApplications.remove(applicant)
+                                                appVotes.remove(applicant)
                                             } catch (e: Exception) {
-                                                // vote was already written; local state update
-                                                // may still be valid — ignore
+                                                // ignore
                                             }
                                         }
-                                    },
-                                    enabled = !hasVoted
+                                    }
                                 ) {
-                                    Text(
-                                        text = if (hasVoted) "Voted" else "Approve",
-                                        color = if (hasVoted) Color.Gray else successColor
-                                    )
+                                    Text("Approve", color = successColor)
                                 }
                                 // FIX: Deny now calls FirebaseRepository.declineAdminApplication
                                 // (which uses groupRef with relative paths — admin safe).
