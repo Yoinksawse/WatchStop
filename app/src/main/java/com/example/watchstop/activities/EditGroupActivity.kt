@@ -8,10 +8,14 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -27,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.watchstop.data.FirebaseRepository
@@ -45,6 +50,9 @@ import com.example.watchstop.view.ui.theme.Purple40
 import com.example.watchstop.view.ui.theme.SlateGrey
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 class EditGroupActivity : AppCompatActivity() {
 
@@ -597,121 +605,473 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
 
         // ── Group Info Dialog ──────────────────────────────────────────
         if (showInfoDialog) {
+            val focusManager = LocalFocusManager.current
+            val context = LocalContext.current
+
+            // Date and Time state
+            var showDatePicker by remember { mutableStateOf(false) }
+            var selectedDate by remember { mutableStateOf<LocalDate?>(null) }
+
+            // Initialize selectedDate from existing day/month/year values
+            LaunchedEffect(Unit) {
+                try {
+                    val dayInt = day.toIntOrNull()
+                    val monthInt = month.toIntOrNull()
+                    val yearInt = year.toIntOrNull()
+                    if (dayInt != null && monthInt != null && yearInt != null) {
+                        selectedDate = LocalDate.of(yearInt, monthInt, dayInt)
+                    }
+                } catch (e: Exception) {
+                    // Invalid date, ignore
+                }
+            }
+
+            // FIELD COLOURS
+            val outlineColor = if (darkmode) ElectricYellow else SlateGrey
+            val yellowOutlineColorsTextField = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = outlineColor,
+                unfocusedBorderColor = outlineColor.copy(alpha = 0.4f),
+                focusedLabelColor = outlineColor,
+                unfocusedLabelColor = Color.Gray,
+                cursorColor = outlineColor
+            )
+
+            val buttonBorder = BorderStroke(1.dp, outlineColor.copy(alpha = 0.3f))
+            val buttonContentColor = if (darkmode) Color.White else Color.Black
+
             AlertDialog(
                 onDismissRequest = { showInfoDialog = false },
-                title = { Text("Edit Group Info") },
+                title = {
+                    Text(
+                        text = "Edit Group Info",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) {
+                                focusManager.clearFocus()
+                            }
+                            .verticalScroll(rememberScrollState())
+                            .padding(vertical = 8.dp)
+                    ) {
+                        // Group Title
                         OutlinedTextField(
                             value = title,
                             onValueChange = { title = it },
                             label = { Text("Group Title") },
-                            modifier = Modifier.fillMaxWidth()
+                            placeholder = { Text("Enter group title") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            colors = yellowOutlineColorsTextField
                         )
+
+                        // Description
                         OutlinedTextField(
                             value = description,
                             onValueChange = { description = it },
                             label = { Text("Description") },
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp),
-                            minLines = 2
+                            placeholder = { Text("Enter group description") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 60.dp),
+                            minLines = 2,
+                            maxLines = 3,
+                            colors = yellowOutlineColorsTextField
                         )
-                        Text("Target Date & Time", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(value = day, onValueChange = { if (it.length <= 2) day = it }, label = { Text("D") }, modifier = Modifier.weight(1f))
-                            OutlinedTextField(value = month, onValueChange = { if (it.length <= 2) month = it }, label = { Text("M") }, modifier = Modifier.weight(1f))
-                            OutlinedTextField(value = year, onValueChange = { if (it.length <= 4) year = it }, label = { Text("Y") }, modifier = Modifier.weight(1.5f))
-                        }
-                        var showTimePickerInternal by remember { mutableStateOf(false) }
-                        OutlinedButton(onClick = { showTimePickerInternal = true }, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.Default.Schedule, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(String.format("%02d:%02d hrs", timePickerState.hour, timePickerState.minute))
-                        }
-                        if (showTimePickerInternal) {
-                            TimePickerDialog(
-                                onDismissRequest = { showTimePickerInternal = false },
-                                confirmButton = { TextButton(onClick = { showTimePickerInternal = false }) { Text("OK") } },
-                                title = { Text("Pick Date & Time") }
-                            ) { TimePicker(state = timePickerState) }
-                        }
 
+                        // Target Date & Time Section Header
+                        Text(
+                            text = "Target Date & Time",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = outlineColor,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
 
-                        // Geofence
-// Geofence
-                        var gfExpanded by remember { mutableStateOf(false) }
-                        val selectedGeofenceName =
-                            UserGeofencesDatabase.getAllGeofences()
-                                .find { it.id == selectedGeofenceId }?.name ?: "Select Geofence"
-
-                        Box {
-                            OutlinedButton(
-                                onClick = {
-                                    if (UserGeofencesDatabase.getAllGeofences().isEmpty()) {
-                                        showNoGeofenceDialog = true
-                                    } else {
-                                        gfExpanded = true
+                        // Date Selection Card
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                // Date Picker Card
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surface
+                                    ),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { showDatePicker = true }
+                                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Event,
+                                                contentDescription = null,
+                                                tint = outlineColor,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = selectedDate?.format(
+                                                    java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy")
+                                                ) ?: "Select date",
+                                                color = if (selectedDate != null)
+                                                    MaterialTheme.colorScheme.onSurface
+                                                else
+                                                    Color.Gray,
+                                                fontSize = 14.sp
+                                            )
+                                        }
+                                        if (selectedDate != null) {
+                                            IconButton(
+                                                onClick = {
+                                                    selectedDate = null
+                                                    day = ""
+                                                    month = ""
+                                                    year = ""
+                                                },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Clear,
+                                                    null,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        } else {
+                                            Icon(
+                                                Icons.Default.ArrowDropDown,
+                                                null,
+                                                tint = outlineColor
+                                            )
+                                        }
                                     }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                border = buttonBorder,
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = buttonContentColor)
-                            ) {
-                                Text("Geofence: $selectedGeofenceName")
-                                Icon(Icons.Default.ArrowDropDown, null)
+                                }
+
+                                // Time Display (using GeoAlarmCard format - no "hrs" suffix)
+                                var showTimePickerInternal by remember { mutableStateOf(false) }
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surface
+                                    ),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { showTimePickerInternal = true }
+                                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Schedule,
+                                                contentDescription = null,
+                                                tint = outlineColor,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = String.format("%02d:%02d", timePickerState.hour, timePickerState.minute),
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                fontSize = 14.sp
+                                            )
+                                        }
+                                        Icon(
+                                            Icons.Default.Edit,
+                                            null,
+                                            tint = outlineColor,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+
+                                if (showTimePickerInternal) {
+                                    TimePickerDialog(
+                                        onDismiss = { showTimePickerInternal = false },
+                                        onConfirm = { hour, minute ->
+                                            // timePickerState is automatically updated by the TimePicker
+                                            showTimePickerInternal = false
+                                        },
+                                        initialHour = timePickerState.hour,
+                                        initialMinute = timePickerState.minute,
+                                        outlineColor = outlineColor
+                                    )
+                                }
                             }
-                            DropdownMenu(
-                                expanded = gfExpanded,
-                                onDismissRequest = { gfExpanded = false }
+                        }
+
+                        // Geofence Section Header
+                        Text(
+                            text = "Geofence",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = outlineColor,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+
+                        // Geofence Selection
+                        var gfExpanded by remember { mutableStateOf(false) }
+                        val selectedGeofence = UserGeofencesDatabase.getAllGeofences()
+                            .find { it.id == selectedGeofenceId }
+                        val selectedGeofenceName = selectedGeofence?.name ?: "Select a geofence"
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                UserGeofencesDatabase.getAllGeofences().forEach { gf ->
+                                // Selected geofence display
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surface
+                                    ),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                if (UserGeofencesDatabase.getAllGeofences().isEmpty()) {
+                                                    showNoGeofenceDialog = true
+                                                } else {
+                                                    gfExpanded = true
+                                                }
+                                            }
+                                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                Icons.Default.LocationOn,
+                                                contentDescription = null,
+                                                tint = if (selectedGeofenceId != null) outlineColor else Color.Gray,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = selectedGeofenceName,
+                                                color = if (selectedGeofenceId != null)
+                                                    MaterialTheme.colorScheme.onSurface
+                                                else
+                                                    Color.Gray,
+                                                fontSize = 14.sp
+                                            )
+                                        }
+                                        Icon(
+                                            Icons.Default.ArrowDropDown,
+                                            null,
+                                            tint = outlineColor
+                                        )
+                                    }
+                                }
+
+                                // Dropdown Menu
+                                DropdownMenu(
+                                    expanded = gfExpanded,
+                                    onDismissRequest = { gfExpanded = false },
+                                    modifier = Modifier.fillMaxWidth(0.9f)
+                                ) {
+                                    UserGeofencesDatabase.getAllGeofences().forEach { gf ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(
+                                                        Icons.Default.LocationOn,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(16.dp),
+                                                        tint = outlineColor
+                                                    )
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text(gf.name)
+                                                }
+                                            },
+                                            onClick = {
+                                                selectedGeofenceId = gf.id
+                                                gfExpanded = false
+                                            }
+                                        )
+                                    }
+
+                                    Divider()
+
                                     DropdownMenuItem(
                                         text = {
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Icon(
-                                                    Icons.Default.LocationOn,
+                                                    Icons.Default.Add,
                                                     contentDescription = null,
-                                                    tint = accentColor,
-                                                    modifier = Modifier.size(16.dp)
+                                                    modifier = Modifier.size(16.dp),
+                                                    tint = outlineColor
                                                 )
                                                 Spacer(modifier = Modifier.width(8.dp))
-                                                Text(gf.name)
+                                                Text("Create New Geofence", color = outlineColor)
                                             }
                                         },
                                         onClick = {
-                                            selectedGeofenceId = gf.id //saved when user clicks save changes
                                             gfExpanded = false
+                                            val intent = Intent(context, MapActivity::class.java)
+                                            context.startActivity(intent)
                                         }
                                     )
                                 }
-
-                                HorizontalDivider()
-
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                Icons.Default.Add,
-                                                contentDescription = null,
-                                                tint = successColor,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Create New Geofence", color = successColor)
-                                        }
-                                    },
-                                    onClick = {
-                                        val intent = Intent(context, MapActivity::class.java)
-                                        context.startActivity(intent)
-                                        gfExpanded = false
-                                    }
-                                )
                             }
                         }
                     }
                 },
-                confirmButton = { TextButton(onClick = { showInfoDialog = false }) { Text("Done") } }
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            // Update day/month/year from selectedDate if available
+                            selectedDate?.let { date ->
+                                day = date.dayOfMonth.toString()
+                                month = date.monthValue.toString()
+                                year = date.year.toString()
+                            }
+                            showInfoDialog = false
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = outlineColor,
+                            contentColor = if (darkmode) Color.Black else Color.White,
+                            disabledContainerColor = outlineColor.copy(alpha = 0.3f)
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Save Changes")
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(
+                        onClick = { showInfoDialog = false },
+                        border = BorderStroke(1.dp, outlineColor.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Cancel")
+                    }
+                }
             )
-        }
 
+            // Date Picker Dialog using helper function
+            if (showDatePicker) {
+                DatePickerDialog(
+                    onDismiss = { showDatePicker = false },
+                    onConfirm = { date ->
+                        selectedDate = date
+                        showDatePicker = false
+                    },
+                    initialDate = selectedDate ?: LocalDate.now(),
+                    outlineColor = outlineColor
+                )
+            }
+        }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TimePickerDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (Int, Int) -> Unit,
+    initialHour: Int,
+    initialMinute: Int,
+    outlineColor: Color
+) {
+    val state = rememberTimePickerState(
+        initialHour = initialHour,
+        initialMinute = initialMinute,
+        is24Hour = false
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select Time") },
+        text = { TimePicker(state = state) },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(state.hour, state.minute) },
+                colors = ButtonDefaults.textButtonColors(contentColor = outlineColor)
+            ) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+fun DatePickerDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (LocalDate) -> Unit,
+    initialDate: LocalDate,
+    outlineColor: Color
+) {
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = initialDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select Date") },
+        text = { DatePicker(state = datePickerState) },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val date = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()
+                        onConfirm(date)
+                    }
+                },
+                colors = ButtonDefaults.textButtonColors(contentColor = outlineColor)
+            ) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
