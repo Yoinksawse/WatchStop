@@ -92,8 +92,14 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
     )
     var showInfoDialog by remember { mutableStateOf(false) }
     var showNoGeofenceDialog by remember { mutableStateOf(false) }
-    var selectedGeofenceId by remember { //initialise from group current geofence
+    // Initialize separately: track the already-saved group geofence vs a new personal selection
+    var selectedGeofenceId by remember {
         mutableStateOf(groupSnapshot.geofence?.id ?: "")
+    }
+    // Track whether the current selection is already a saved group copy (starts with "group_")
+    // vs a freshly picked personal geofence
+    var isExistingGroupGeofence by remember {
+        mutableStateOf(groupSnapshot.geofence?.id?.startsWith("group_") == true)
     }
 
     val initialMemberNames = groupSnapshot.groupMemberNames.toTypedArray()
@@ -152,6 +158,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
             else "You haven't selected a Geofence."
         var titleString =
             if (noGeofences) "No Geofences Found"
+            //else if ()
             else "Select a Geofence"
         AlertDialog(
             onDismissRequest = { showNoGeofenceDialog = false },
@@ -555,19 +562,21 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                             }
 
                             // Create a copy of the geofence with a new group-specific ID
-                            val selectedGeofence = if (selectedGeofenceId.isNotEmpty()) {
-                                UserGeofencesDatabase.getAllGeofences()
-                                    .find { it.id == selectedGeofenceId }
-                                    ?.let { originalGeofence ->
-                                        // Create a new geofence copy for the group
-                                        val groupGeofenceId = "group_${groupId}_${System.currentTimeMillis()}"
-                                        originalGeofence.copy(
-                                            id = groupGeofenceId,
-                                            geoAlarmId = null // Clear any personal alarm associations
-                                        )
-                                    }
-                            } else {
-                                null
+                            val selectedGeofence = when {
+                                // User picked a personal geofence from the dropdown — make a deep copy
+                                selectedGeofenceId.isNotEmpty() && !isExistingGroupGeofence -> {
+                                    UserGeofencesDatabase.getAllGeofences()
+                                        .find { it.id == selectedGeofenceId }
+                                        ?.let { originalGeofence ->
+                                            //save deep copy with group identifier
+                                            val groupGeofenceId = "group_${groupId}_${System.currentTimeMillis()}"
+                                            originalGeofence.copy(id = groupGeofenceId, geoAlarmId = null)
+                                        }
+                                }
+                                // Already a saved group geofence copy — preserve it as-is
+                                isExistingGroupGeofence -> groupSnapshot.geofence
+                                // No geofence selected
+                                else -> null
                             }
 
                             val updated = latest.copy(
@@ -838,9 +847,12 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
 
                         // Geofence Selection
                         var gfExpanded by remember { mutableStateOf(false) }
-                        val selectedGeofence = UserGeofencesDatabase.getAllGeofences()
-                            .find { it.id == selectedGeofenceId }
-                        val selectedGeofenceName = selectedGeofence?.name ?: "Select a geofence"
+                        val selectedGeofenceName = when {
+                            isExistingGroupGeofence -> groupSnapshot.geofence?.name ?: "Select a geofence"
+                            selectedGeofenceId.isNotEmpty() -> UserGeofencesDatabase.getAllGeofences()
+                                .find { it.id == selectedGeofenceId }?.name ?: "Select a geofence"
+                            else -> "Select a geofence"
+                        }
 
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -924,12 +936,13 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                             },
                                             onClick = {
                                                 selectedGeofenceId = gf.id
+                                                isExistingGroupGeofence = false
                                                 gfExpanded = false
                                             }
                                         )
                                     }
 
-                                    Divider()
+                                    HorizontalDivider()
 
                                     DropdownMenuItem(
                                         text = {
