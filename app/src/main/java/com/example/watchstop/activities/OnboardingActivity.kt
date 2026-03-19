@@ -56,7 +56,8 @@ class OnboardingActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            WatchStopTheme (darkTheme = isSystemInDarkTheme()){
+            val darkmode: Boolean = isSystemInDarkTheme()
+            WatchStopTheme (darkTheme = darkmode){
                 Scaffold(
                     topBar = {}
                 ) { innerPadding ->
@@ -65,7 +66,7 @@ class OnboardingActivity : ComponentActivity() {
                             .padding(innerPadding)
                             .fillMaxSize()
                     ) {
-                        OnboardingReactive(UserProfileObject.darkmode) { finish() }
+                        OnboardingReactive(darkmode) { finish() }
                     }
                 }
             }

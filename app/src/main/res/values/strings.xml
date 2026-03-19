@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">WatchStop</string>
+    <!--> <string name="api_key_googlemap"></string> </!-->
 </resources>

@@ -1,6 +1,7 @@
 package com.example.watchstop.service
 
 import android.R
+import android.annotation.SuppressLint
 import android.app.*
 import android.content.Intent
 import android.location.Location
@@ -82,6 +83,13 @@ class GeofenceMonitorService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == "ACTION_STOP_ALARM") {
+            forceStopAlarm()
+        }
+        return START_STICKY
+    }
+
     // ── Firebase Alarm Subscription ────────────────────────────���──────────
 
     private fun subscribeToAlarms() {
@@ -145,6 +153,11 @@ class GeofenceMonitorService : Service() {
                 triggerGeoAlarm(alarm)
             } else if (!isInside && activeAlarms.contains(alarm.id)) {
                 activeAlarms.remove(alarm.id)
+
+                // Optionally: You might want to deactivate the alarm when leaving
+                // Commented out because you may want alarms to trigger again next time
+                // deactivateSingleAlarm(alarm.id)
+
                 stopAlarmIfNoneActive()
             }
         }
@@ -416,21 +429,131 @@ class GeofenceMonitorService : Service() {
     // ── Alarm Audio / Vibration ───────────────────────────────────────────
 
     private fun triggerGeoAlarm(alarm: GeoAlarm) {
+        // Always send individual notification for this alarm
         sendGeoAlarmNotification(alarm)
-        startAlarmAudioAndVibration()
+
+        // Start audio/vibration if not already playing
+        if (mediaPlayer == null) {
+            startAlarmAudioAndVibration()
+        }
+
+        // Update or show summary notification for multiple alarms
+        if (activeAlarms.size > 1) {
+            showMultipleAlarmsSummary()
+        }
     }
 
+    @SuppressLint("LaunchActivityFromNotification")
     private fun sendGeoAlarmNotification(alarm: GeoAlarm) {
         val manager = getSystemService(NotificationManager::class.java)
+
+        val stopIntent = Intent(this, StopAlarmReceiver::class.java)
+        val stopPendingIntent = PendingIntent.getBroadcast(
+            this,
+            alarm.id.hashCode(), // Use alarm ID as request code to differentiate multiple alarms
+            stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val notification = NotificationCompat.Builder(this, ALARM_CHANNEL_ID)
             .setContentTitle("ALARM: ${alarm.name}")
-            .setContentText("You have entered the geofence area.")
+            .setContentText("You have entered the geofence area. Tap to stop all active alarms.")
             .setSmallIcon(R.drawable.ic_lock_idle_alarm)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .addAction(
+                R.drawable.ic_lock_idle_alarm,
+                "Stop All Alarms",
+                stopPendingIntent
+            )
+            .setContentIntent(stopPendingIntent)
+            .setDeleteIntent(stopPendingIntent)
+            .setAutoCancel(true)
+            .setOngoing(true)
+            .build()
+
+        // Use unique notification ID for each alarm
+        manager?.notify("alarm_${alarm.id}".hashCode(), notification)
+    }
+
+    private fun showMultipleAlarmsSummary() {
+        val manager = getSystemService(NotificationManager::class.java)
+        val count = activeAlarms.size
+
+        // Create a list of active alarm names for the inbox style
+        val activeAlarmNames = activeAlarms.mapNotNull { alarmId ->
+            liveAlarms.find { it.id == alarmId }?.name
+        }.take(5) // Limit to 5 to avoid overcrowding
+
+        val stopIntent = Intent(this, StopAlarmReceiver::class.java)
+        val stopPendingIntent = PendingIntent.getBroadcast(
+            this,
+            999, // Fixed ID for summary notification
+            stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Use InboxStyle to show multiple lines
+        val inboxStyle = NotificationCompat.InboxStyle()
+            .setBigContentTitle("$count Active Alarms")
+            .setSummaryText("Tap to stop all")
+
+        activeAlarmNames.forEach { alarmName ->
+            inboxStyle.addLine("• $alarmName")
+        }
+
+        if (activeAlarmNames.size < count) {
+            inboxStyle.addLine("• and ${count - activeAlarmNames.size} more...")
+        }
+
+        val summaryNotification = NotificationCompat.Builder(this, ALARM_CHANNEL_ID)
+            .setContentTitle("$count Active Alarms")
+            .setContentText("Multiple geofence alarms are triggered")
+            .setSmallIcon(R.drawable.ic_lock_idle_alarm) // Fix: Use your icon
+            .setStyle(inboxStyle)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .addAction(
+                R.drawable.ic_lock_idle_alarm,
+                "Stop All",
+                stopPendingIntent
+            )
+            .setContentIntent(stopPendingIntent)
+            .setOngoing(true)
             .setAutoCancel(true)
             .build()
-        manager?.notify(alarm.id.hashCode(), notification)
+
+        // Use a fixed ID for the summary notification
+        manager?.notify("multiple_alarms_summary".hashCode(), summaryNotification)
+    }
+
+    private fun updateNotificationForMultipleAlarms() {
+        val manager = getSystemService(NotificationManager::class.java)
+        val count = activeAlarms.size
+
+        if (count > 1) {
+            val stopIntent = Intent(this, StopAlarmReceiver::class.java)
+            val stopPendingIntent = PendingIntent.getBroadcast(
+                this,
+                0,
+                stopIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val notification = NotificationCompat.Builder(this, ALARM_CHANNEL_ID)
+                .setContentTitle("Multiple Alarms Active")
+                .setContentText("$count geofence alarms are currently triggered")
+                .setSmallIcon(R.drawable.ic_lock_idle_alarm)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .addAction(R.drawable.ic_media_pause, "Stop All", stopPendingIntent)
+                .setContentIntent(stopPendingIntent)
+                .setOngoing(true)
+                .build()
+
+            manager?.notify("multiple_alarms".hashCode(), notification)
+        }
     }
 
     private var volumeEscalationRunnable: Runnable? = null
@@ -484,7 +607,75 @@ class GeofenceMonitorService : Service() {
             mediaPlayer = null
             vibrator?.cancel()
             volumeEscalationRunnable?.let { handler.removeCallbacks(it) }
+
+            // Cancel all notifications
+            val manager = getSystemService(NotificationManager::class.java)
+            manager?.cancel("multiple_alarms_summary".hashCode())
+            // Individual alarm notifications will auto-cancel when clicked
+
+            Log.d("GeofenceService", "All alarms stopped - no active alarms")
+        } else {
+            // Update the summary notification with current count
+            showMultipleAlarmsSummary()
         }
+    }
+
+    private fun forceStopAlarm() {
+        // Stop audio and vibration
+        mediaPlayer?.stop()
+        mediaPlayer?.release()
+        mediaPlayer = null
+        vibrator?.cancel()
+        volumeEscalationRunnable?.let { handler.removeCallbacks(it) }
+
+        // Get the current active alarms before clearing
+        val alarmsToDeactivate = activeAlarms.toList()
+
+        // Deactivate them in Firebase if user is logged in
+        val uid = FirebaseRepository.currentUid
+        if (uid != null && alarmsToDeactivate.isNotEmpty()) {
+            FirebaseRepository.deactivateGeoAlarms(
+                database = FirebaseDatabase.getInstance().reference,
+                uid = uid,
+                alarmIds = alarmsToDeactivate,
+                onComplete = { success, error ->
+                    if (success) {
+                        Log.d("GeofenceService", "Successfully deactivated ${alarmsToDeactivate.size} alarms")
+
+                        // Update local liveAlarms list
+                        serviceScope.launch {
+                            liveAlarms = liveAlarms.map { alarm ->
+                                if (alarmsToDeactivate.contains(alarm.id)) {
+                                    alarm.copy(active = false)
+                                } else {
+                                    alarm
+                                }
+                            }
+                        }
+
+                        // Cancel all notifications
+                        val manager = getSystemService(NotificationManager::class.java)
+                        alarmsToDeactivate.forEach { alarmId ->
+                            manager?.cancel("alarm_$alarmId".hashCode())
+                        }
+                        manager?.cancel("multiple_alarms_summary".hashCode())
+
+                    } else {
+                        Log.e("GeofenceService", "Failed to deactivate alarms: $error")
+                    }
+                }
+            )
+        } else {
+            // Just cancel notifications if no Firebase update needed
+            val manager = getSystemService(NotificationManager::class.java)
+            activeAlarms.forEach { alarmId ->
+                manager?.cancel("alarm_$alarmId".hashCode())
+            }
+            manager?.cancel("multiple_alarms_summary".hashCode())
+        }
+
+        // Clear active alarms set
+        activeAlarms.clear()
     }
 
     // ── Notifications ─────────────────────────────────────────────────────

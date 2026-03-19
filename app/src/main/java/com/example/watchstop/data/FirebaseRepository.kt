@@ -853,6 +853,36 @@ object FirebaseRepository {
     }
 
     /**
+     * Non-suspend version for use in services
+     */
+    fun deactivateGeoAlarms(
+        database: DatabaseReference,
+        uid: String,
+        alarmIds: List<String>,
+        onComplete: (Boolean, String?) -> Unit
+    ) {
+        if (alarmIds.isEmpty()) {
+            onComplete(true, null)
+            return
+        }
+
+        val updates = mutableMapOf<String, Any?>()
+        alarmIds.forEach { alarmId ->
+            updates["geoAlarms/$uid/$alarmId/active"] = false
+        }
+
+        database.updateChildren(updates)
+            .addOnSuccessListener {
+                Log.d("FirebaseRepository", "Deactivated ${alarmIds.size} alarms")
+                onComplete(true, null)
+            }
+            .addOnFailureListener { e ->
+                Log.e("FirebaseRepository", "Failed to deactivate alarms", e)
+                onComplete(false, e.message)
+            }
+    }
+
+    /**
      * Save a geoalarm with proper geofence linking
      */
     suspend fun saveGeoAlarm(uid: String, alarm: GeoAlarm) {

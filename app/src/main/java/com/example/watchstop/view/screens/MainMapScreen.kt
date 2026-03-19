@@ -253,6 +253,8 @@ fun MyGoogleMap() {
                                     geofences.remove(zone)
                                     UserGeofencesDatabase.removeGeofence(zone, context)
 
+                                    Toast.makeText(context, "Geofence removed locally", Toast.LENGTH_SHORT).show()
+
                                     // Delete from Firebase using the correct ID
                                     val uid = auth.currentUser?.uid
                                     if (uid != null) {
@@ -264,7 +266,7 @@ fun MyGoogleMap() {
                                         )
                                     }
 
-                                    Toast.makeText(context, "Geofence removed", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Geofence removed from Cloud", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         )
@@ -286,10 +288,10 @@ fun MyGoogleMap() {
                                     if (uid != null) {
                                         firebaseDb.child("geofences").child(uid).child(zone.id).removeValue()
                                             .addOnSuccessListener {
-                                                Toast.makeText(context, "Geofence deleted from cloud", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, "Geofence removed from cloud", Toast.LENGTH_SHORT).show()
                                             }
                                             .addOnFailureListener {
-                                                Toast.makeText(context, "Failed to delete from cloud", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, "Failed to removed from cloud", Toast.LENGTH_SHORT).show()
                                             }
                                     }
 

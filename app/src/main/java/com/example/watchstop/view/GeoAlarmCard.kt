@@ -1,6 +1,7 @@
 package com.example.watchstop.view
 
 import android.os.Build
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -14,17 +15,22 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.watchstop.data.FirebaseRepository
 import com.example.watchstop.data.UserGeofencesDatabase
+import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.model.GeoAlarm
-import com.example.watchstop.view.screens.NICEGREEN_COLOUR
 import com.example.watchstop.view.ui.theme.WatchStopTheme
+import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter
 
 @RequiresApi(Build.VERSION_CODES.O)
@@ -32,10 +38,15 @@ import java.time.format.DateTimeFormatter
 fun GeoAlarmCard(
     alarm: GeoAlarm,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onToggleActive: (GeoAlarm) -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     var expanded by remember { mutableStateOf(false) }
     var isOverflowing by remember { mutableStateOf(false) }
+    var isTogglingActive by remember { mutableStateOf(false) }
     
     val backgroundColor = if (darkmode) Color(0xFF1C1C1E) else Color.White
     val primaryText = if (darkmode) Color.White else Color.Black
@@ -72,29 +83,67 @@ fun GeoAlarmCard(
                             fontWeight = FontWeight.Bold,
                             color = primaryText
                         )
-                        
-                        // Status badge (Inactive/Active)
+
+                        //STATUS BADGE (active/inactive)
+
+                        val activeGreen = Color(0xFF4CAF50)
+                        val activeBg = activeGreen.copy(alpha = 0.15f) // Subtle tint
+                        val inactiveBg = Color.Gray.copy(alpha = 0.2f)
+
                         Box(
                             modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (alarm.active) activeBg else inactiveBg)
                                 .border(
                                     width = 1.dp,
-                                    color = if (alarm.active) NICEGREEN_COLOUR else Color.Red,
-                                    shape = RoundedCornerShape(12.dp)
+                                    color = if (alarm.active) activeGreen.copy(alpha = 0.5f) else Color.Transparent,
+                                    shape = RoundedCornerShape(8.dp)
                                 )
-                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                                .clickable(enabled = !isTogglingActive) {
+                                    scope.launch {
+                                        isTogglingActive = true
+                                        try {
+                                            val updatedAlarm = alarm.copy(active = !alarm.active)
+
+                                            if (UserProfileObject.isLoggedIn) {
+                                                val uid = FirebaseRepository.currentUid
+                                                if (uid != null) FirebaseRepository.saveGeoAlarm(uid, updatedAlarm)
+                                            }
+
+                                            onToggleActive(updatedAlarm)
+
+                                            Toast.makeText(context, "Alarm ${if (updatedAlarm.active) "activated" else "deactivated"}", Toast.LENGTH_SHORT).show()
+                                        }
+                                        catch (e: Exception) { Toast.makeText(context, "Failed to update alarm: ${e.message}", Toast.LENGTH_SHORT).show()}
+                                        finally { isTogglingActive = false }
+                                    }
+                                }
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = if (alarm.active) "Active" else "Inactive",
-                                color = if (alarm.active) NICEGREEN_COLOUR else Color.Red,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            if (isTogglingActive) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(12.dp),
+                                    strokeWidth = 1.5.dp,
+                                    color = if (alarm.active) activeGreen else Color.Gray
+                                )
+                            } else {
+                                Text(
+                                    text = if (alarm.active) "ACTIVE" else "INACTIVE",
+                                    color = if (alarm.active) activeGreen else Color.Gray,
+                                    style = TextStyle(
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        letterSpacing = 0.8.sp
+                                    )
+                                )
+                            }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // Geofence Name display
+                    //GEOFENCE NAME
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.LocationOn,
@@ -111,7 +160,7 @@ fun GeoAlarmCard(
                         )
                     }
 
-                    // Display date/day and time window if they are not indefinite
+                    //DATE/DAY + TIME WINDOW (show if not indefinite)
                     val dateStr = when {
                         alarm.specificDate != null -> alarm.specificDate!!.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
                         alarm.dayOfWeek != null -> "Every " + alarm.dayOfWeek!!.name.lowercase().replaceFirstChar { it.uppercase() }
@@ -120,9 +169,7 @@ fun GeoAlarmCard(
 
                     val timeStr = if (alarm.startTime != null && alarm.endTime != null) {
                         "${alarm.startTime!!.format(DateTimeFormatter.ofPattern("h:mm a"))} - ${alarm.endTime!!.format(DateTimeFormatter.ofPattern("h:mm a"))}"
-                    } else {
-                        null
-                    }
+                    } else null
 
                     if (dateStr != null || timeStr != null) {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -147,7 +194,7 @@ fun GeoAlarmCard(
                     } else {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Activated at all times",
+                            text = "Monitored at all times",
                             fontSize = 13.sp,
                             color = secondaryText,
                             fontStyle = FontStyle.Italic

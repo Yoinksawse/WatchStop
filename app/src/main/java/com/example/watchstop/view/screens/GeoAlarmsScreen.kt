@@ -38,6 +38,7 @@ import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.model.GeoAlarm
 import com.example.watchstop.data.FirebaseRepository
+import com.example.watchstop.data.GeoAlarmsDatabase.alarms
 import com.example.watchstop.view.GeoAlarmCard
 import com.example.watchstop.view.ui.theme.ElectricYellow
 import com.example.watchstop.view.ui.theme.SlateGrey
@@ -140,6 +141,10 @@ fun GeoAlarmsScreen(
                                             }
                                         }
                                     }
+                                },
+                                onToggleActive = { updatedAlarm ->
+                                    val index = alarms.indexOfFirst { it.id == updatedAlarm.id }
+                                    if (index != -1) alarms[index] = updatedAlarm
                                 }
                             )
                         }
@@ -197,6 +202,7 @@ fun EditGeoAlarmDialog(
     var showStartPicker by remember { mutableStateOf(false) }
     var showEndPicker by remember { mutableStateOf(false) }
     var showNoGeofenceDialog by remember { mutableStateOf(false) }
+    var showInvalidDateTimeDialog by remember { mutableStateOf(false) }
 
     var selectedDate by remember { mutableStateOf(alarm.specificDate) }
     var selectedDay by remember { mutableStateOf(alarm.dayOfWeek) }
@@ -368,7 +374,7 @@ fun EditGeoAlarmDialog(
                                                 )
                                                 selectedDay != null -> "Every " + selectedDay!!.name.lowercase()
                                                     .replaceFirstChar { it.uppercase() }
-                                                else -> "Select date or day"
+                                                else -> "Date"
                                             },
                                             color = if (selectedDate != null || selectedDay != null)
                                                 MaterialTheme.colorScheme.onSurface
@@ -694,7 +700,26 @@ fun EditGeoAlarmDialog(
                     if (selectedGeofenceId == null) {
                         showNoGeofenceDialog = true
                     } else {
-                        val finalName = if (name.isBlank()) "New GeoAlarm" else name
+                        val finalName = name.ifBlank { "New GeoAlarm" }
+                        if (startTime != null && endTime == null) {
+                            endTime = LocalTime.of(23, 59)
+                        }
+
+                        if (startTime == null && endTime != null) {
+                            startTime = LocalTime.of(0, 0)
+                        }
+
+                        if (selectedDate != null) {
+                            val now = LocalTime.now()
+                            if (selectedDate == LocalDate.now() &&
+                                startTime != null && endTime != null &&
+                                endTime!! < now
+                            ) {
+                                showInvalidDateTimeDialog = true
+                                return@Button
+                            }
+                        }
+
                         onSave(
                             alarm.copy(
                                 name = finalName,
@@ -731,6 +756,14 @@ fun EditGeoAlarmDialog(
             }
         }
     )
+
+    if (showInvalidDateTimeDialog) {
+        InvalidDateTimeDialog(
+            onDismiss = { showInvalidDateTimeDialog = false },
+            onConfirm = { showInvalidDateTimeDialog = false },
+            outlineColor = outlineColor
+        )
+    }
 
     // Time Pickers
     if (showStartPicker) {
@@ -853,5 +886,27 @@ fun DatePickerDialog(
                 Text("Cancel")
             }
         }
+    )
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+fun InvalidDateTimeDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    outlineColor: Color
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Invalid Date + Time") },
+        text = { Text("The time you set has already passed today") },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm() },
+                colors = ButtonDefaults.textButtonColors(contentColor = outlineColor)
+            ) {
+                Text("OK")
+            }
+        },
     )
 }

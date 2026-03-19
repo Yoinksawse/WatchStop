@@ -33,6 +33,8 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />
+        <receiver android:name=".service.StopAlarmReceiver" />
+
 
         <activity
             android:name=".activities.MainActivity"

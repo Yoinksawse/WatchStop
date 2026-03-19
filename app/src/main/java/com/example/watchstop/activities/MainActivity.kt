@@ -290,7 +290,7 @@ fun MainScreen(onToggleDarkMode: () -> Unit) {
                                 )
                                 //IMPLICIT INTENT USAGE TO OPEN WEBSITE: FULFILLED!!!!
                                 DropdownMenuItem(
-                                    text = { Text("About WatchStop") },
+                                    text = { Text("About WatchStop & Contacts") },
                                     onClick = {
                                         val watchStopGithubIntent = Intent(
                                             Intent.ACTION_VIEW,
