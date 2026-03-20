@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.watchstop.activities.X
 import com.example.watchstop.data.FirebaseRepository
 import com.example.watchstop.data.UserGeofencesDatabase
 import com.example.watchstop.data.UserProfileObject
@@ -79,7 +80,7 @@ fun GeoAlarmCard(
                     ) {
                         Text(
                             text = alarm.name,
-                            fontSize = 18.sp,
+                            fontSize = 18.sp * X.value,
                             fontWeight = FontWeight.Bold,
                             color = primaryText
                         )
@@ -132,7 +133,7 @@ fun GeoAlarmCard(
                                     text = if (alarm.active) "ACTIVE" else "INACTIVE",
                                     color = if (alarm.active) activeGreen else Color.Gray,
                                     style = TextStyle(
-                                        fontSize = 10.sp,
+                                        fontSize = 10.sp * X.value,
                                         fontWeight = FontWeight.ExtraBold,
                                         letterSpacing = 0.8.sp
                                     )
@@ -154,7 +155,7 @@ fun GeoAlarmCard(
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = geofenceName,
-                            fontSize = 12.sp,
+                            fontSize = 12.sp * X.value,
                             color = secondaryText,
                             fontWeight = FontWeight.Medium
                         )
@@ -186,7 +187,7 @@ fun GeoAlarmCard(
                             }
                             Text(
                                 text = displayText,
-                                fontSize = 13.sp,
+                                fontSize = 13.sp * X.value,
                                 fontWeight = FontWeight.Medium,
                                 color = primaryText
                             )
@@ -195,7 +196,7 @@ fun GeoAlarmCard(
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "Monitored at all times",
-                            fontSize = 13.sp,
+                            fontSize = 13.sp * X.value,
                             color = secondaryText,
                             fontStyle = FontStyle.Italic
                         )
@@ -223,7 +224,7 @@ fun GeoAlarmCard(
                             Column {
                                 Text(
                                     text = alarm.description,
-                                    fontSize = 14.sp,
+                                    fontSize = 14.sp * X.value,
                                     color = primaryText.copy(alpha = 0.9f),
                                     maxLines = if (expanded) Int.MAX_VALUE else 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -238,7 +239,7 @@ fun GeoAlarmCard(
                                 if (isOverflowing || expanded) {
                                     Text(
                                         text = if (expanded) "Tap to retract" else "Tap to expand",
-                                        fontSize = 11.sp,
+                                        fontSize = 11.sp * X.value,
                                         color = secondaryText,
                                         modifier = Modifier.align(Alignment.End).padding(top = 4.dp)
                                     )
@@ -262,7 +263,7 @@ fun GeoAlarmCard(
                         Text(
                             text = "Edit",
                             color = accentColor,
-                            fontSize = 12.sp,
+                            fontSize = 12.sp * X.value,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
@@ -276,7 +277,7 @@ fun GeoAlarmCard(
                         Text(
                             text = "Delete",
                             color = destructiveColor,
-                            fontSize = 12.sp,
+                            fontSize = 12.sp * X.value,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )

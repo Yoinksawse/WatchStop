@@ -41,6 +41,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -72,7 +73,8 @@ import androidx.compose.ui.Alignment
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.example.watchstop.view.ui.theme.LocationAlarm
 
-var debugOnboardingOn = true; //TODO: just for debugging; TURN OFF
+var debugOnboardingOn = false; //just for debugging; TURN OFF
+var X = mutableFloatStateOf (1.0f)  //TODO: ACCESSIBILITY; TEXTSIZE ADJUSTMENT MULTIPLIER
 
 class MainActivity : AppCompatActivity() {
     @RequiresApi(Build.VERSION_CODES.O)
@@ -91,7 +93,7 @@ class MainActivity : AppCompatActivity() {
 
         //auto login & other info gathering logic
         val userPrefs = getSharedPreferences("WatchStopUserPrefs", MODE_PRIVATE)
-        //userPrefs.edit().clear().apply() //TODO: debug line; clear cache manually
+        //userPrefs.edit().clear().apply() //debug line; clear cache manually
 
         //save creds if just return from successful login/signup
         val intentIdentifier = intent.getStringExtra("LOGIN_IDENTIFIER")
@@ -152,17 +154,13 @@ class MainActivity : AppCompatActivity() {
                 val foregroundLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestMultiplePermissions()
                 ) { permissions ->
-                    val granted = permissions.values.all { it }
-                    if (granted) {
-                        checkAndRequestBackgroundPermission()
-                    }
+                    if (permissions.values.all { it }) checkAndRequestBackgroundPermission()
                 }
 
                 LaunchedEffect(Unit) {
                     val foregroundGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                    if (foregroundGranted) {
-                        checkAndRequestBackgroundPermission()
-                    } else {
+                    if (foregroundGranted) checkAndRequestBackgroundPermission()
+                    else {
                         foregroundLauncher.launch(arrayOf(
                             Manifest.permission.ACCESS_FINE_LOCATION,
                             Manifest.permission.ACCESS_COARSE_LOCATION
@@ -185,11 +183,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val backgroundLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) {
-            startGeofenceService()
-        } else {
-            Toast.makeText(this, "Set Location to 'Allow all the time' in settings for background alarms", Toast.LENGTH_LONG).show()
-        }
+        if (granted) startGeofenceService()
+        else Toast.makeText(this, "Set Location to 'Allow all the time' in settings for background alarms", Toast.LENGTH_LONG).show()
     }
 
     private fun checkAndRequestBackgroundPermission() {
@@ -210,9 +205,7 @@ class MainActivity : AppCompatActivity() {
         val serviceIntent = Intent(this, GeofenceMonitorService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent)
-        } else {
-            startService(serviceIntent)
-        }
+        } else startService(serviceIntent)
     }
 }
 
@@ -245,7 +238,8 @@ fun MainScreen(onToggleDarkMode: () -> Unit) {
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
                             text = stringResource(R.string.app_name),
-                            color = Color.White
+                            color = Color.White,
+                            fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value
                         )
                     }
                 },
@@ -256,9 +250,7 @@ fun MainScreen(onToggleDarkMode: () -> Unit) {
                 ),
                 actions = {
                     Row {
-                        IconButton(onClick = {
-                            onToggleDarkMode()
-                        }) {
+                        IconButton(onClick = { onToggleDarkMode() }) {
                             Icon(
                                 imageVector = Icons.Default.DarkMode,
                                 tint = Color.White,
@@ -281,7 +273,7 @@ fun MainScreen(onToggleDarkMode: () -> Unit) {
                                 modifier = Modifier.background(MaterialTheme.colorScheme.surface)
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("Show Tutorial") },
+                                    text = { Text("Show Tutorial", fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value) },
                                     onClick = {
                                         val intent = Intent(context, OnboardingActivity::class.java)
                                         context.startActivity(intent)
@@ -290,7 +282,7 @@ fun MainScreen(onToggleDarkMode: () -> Unit) {
                                 )
                                 //IMPLICIT INTENT USAGE TO OPEN WEBSITE: FULFILLED!!!!
                                 DropdownMenuItem(
-                                    text = { Text("About WatchStop & Contacts") },
+                                    text = { Text("About Us/Contact Us", fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value) },
                                     onClick = {
                                         val watchStopGithubIntent = Intent(
                                             Intent.ACTION_VIEW,
@@ -298,6 +290,15 @@ fun MainScreen(onToggleDarkMode: () -> Unit) {
                                         )
                                         context.startActivity(watchStopGithubIntent)
                                         expanded = false
+                                    }
+                                )
+
+                                //TODO: Adjust accessibility font size settings
+                                DropdownMenuItem(
+                                    text = { Text(if (X.floatValue == 1.3f) "Toggle Small Font" else "Toggle Large Font",
+                                        fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value) },
+                                    onClick = {
+                                        if (X.floatValue == 1.0f) X.floatValue = 1.3f else X.floatValue = 1.0f
                                     }
                                 )
                             }
@@ -308,8 +309,7 @@ fun MainScreen(onToggleDarkMode: () -> Unit) {
                                 if (UserProfileObject.isLoggedIn) {
                                     val intent = Intent(context, ProfileActivity::class.java)
                                     context.startActivity(intent)
-                                }
-                                else {
+                                } else {
                                     val intent = Intent(context, LoginActivity::class.java)
                                     context.startActivity(intent)
                                 }
@@ -343,9 +343,7 @@ fun MainScreen(onToggleDarkMode: () -> Unit) {
             when (selectedTab) {
                 0 -> MainMapScreen()
                 1 -> GeoAlarmsScreen(
-                    onRequestMap = {
-                        selectedTab = 0
-                    },
+                    onRequestMap = { selectedTab = 0 },
                 )
                 2 -> RouteTrackerScreen()
                 3 -> GroupsScreen()

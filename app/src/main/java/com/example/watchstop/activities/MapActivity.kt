@@ -41,7 +41,13 @@ class MapActivity : AppCompatActivity() {
                                     )
                                 }
                             },
-                            title = { Text("Create GeoFence", color = Color.White) },
+                            title = {
+                                Text(
+                                    "Create GeoFence",
+                                    color = Color.White,
+                                    fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value
+                                )
+                            },
                             colors = TopAppBarDefaults.topAppBarColors(
                                 containerColor = if (UserProfileObject.darkmode) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
                                 titleContentColor = MaterialTheme.colorScheme.onPrimary,

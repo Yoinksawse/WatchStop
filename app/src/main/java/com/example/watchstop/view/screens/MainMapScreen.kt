@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.example.watchstop.activities.X
 import com.example.watchstop.data.UserGeofencesDatabase
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.model.GeofenceArea
@@ -339,11 +340,13 @@ fun MyGoogleMap() {
             if (showHistory) {
                 AlertDialog(
                     onDismissRequest = { showHistory = false },
-                    title = { Text("Saved Geofences") },
+                    title = { Text("Saved Geofences",
+                        fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value) },
                     text = {
                         Box(modifier = Modifier.height(300.dp)) {
                             if (cloudGeofencesList.isEmpty()) {
-                                Text("No geofences found.", modifier = Modifier.align(Alignment.Center))
+                                Text("No geofences found.", modifier = Modifier.align(Alignment.Center),
+                                    fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value)
                             } else {
                                 androidx.compose.foundation.lazy.LazyColumn {
                                     items(cloudGeofencesList) { zone ->
@@ -364,14 +367,16 @@ fun MyGoogleMap() {
                                                 }
                                                 showHistory = false
                                             },
-                                            headlineContent = { Text(zone.name) },
+                                            headlineContent = { Text(text = zone.name,
+                                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value) },
                                             supportingContent = {
                                                 val type = when (zone.typeId) {
                                                     GEOFENCE_TYPE_CIRCULAR -> "Circular"
                                                     GEOFENCE_TYPE_POLYGONAL -> "Polygonal"
                                                     else -> if (zone.points.isEmpty()) "Circular" else "Polygonal"
                                                 }
-                                                Text("$type • ${zone.radius.toInt()}m radius")
+                                                Text(text = "$type • ${zone.radius.toInt()}m radius",
+                                                    fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                                             },
                                             trailingContent = {
                                                 IconButton(onClick = {
@@ -406,7 +411,8 @@ fun MyGoogleMap() {
                         }
                     },
                     confirmButton = {
-                        TextButton(onClick = { showHistory = false }) { Text("Close") }
+                        TextButton(onClick = { showHistory = false }) {
+                            Text("Close", fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value) }
                     }
                 )
             }
@@ -494,7 +500,7 @@ fun MyGoogleMap() {
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("Name your Geofence", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            Text("Name your Geofence", fontWeight = FontWeight.Bold, fontSize = 18.sp * X.value)
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -502,7 +508,8 @@ fun MyGoogleMap() {
                                 OutlinedTextField(
                                     value = geofenceNameInput,
                                     onValueChange = { geofenceNameInput = it },
-                                    placeholder = { Text("e.g. Home") },
+                                    placeholder = { Text(text = "e.g. Home",
+                                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value) },
                                     modifier = Modifier.weight(1f),
                                     singleLine = true
                                 )
@@ -531,7 +538,8 @@ fun MyGoogleMap() {
                                 onClick = { pendingGeofence = null },
                                 modifier = Modifier.align(Alignment.End)
                             ) {
-                                Text("Cancel")
+                                Text("Cancel",
+                                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value)
                             }
                         }
                     }
@@ -652,7 +660,8 @@ fun MyGoogleMap() {
                         modifier = Modifier.padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(text = "Geofence Radius: ${radius.toInt()}m", style = MaterialTheme.typography.labelMedium)
+                        Text(text = "Geofence Radius: ${radius.toInt()}m", style = MaterialTheme.typography.labelMedium,
+                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value)
                         Slider(
                             value = radius,
                             onValueChange = { radius = it },

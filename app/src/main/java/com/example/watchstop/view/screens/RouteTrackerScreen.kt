@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.example.watchstop.activities.X
 import com.example.watchstop.view.ui.theme.MapStyles
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.model.ColouredSegment
@@ -553,13 +554,13 @@ fun RouteTrackerScreen() {
                         ) {
                             Text(
                                 text = "Route Playback",
-                                fontSize = 12.sp,
+                                fontSize = 12.sp * X.value,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             pathPointNearestToPin?.let { pt ->
                                 Text(
                                     text = timeFormatter.format(Date(pt.timestamp)),
-                                    fontSize = 18.sp,
+                                    fontSize = 18.sp * X.value,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
@@ -610,12 +611,12 @@ fun RouteTrackerScreen() {
                                 Text(
                                     text = timeFormatter.format(Date(pathPoints.first().timestamp)),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontSize = 10.sp
+                                    fontSize = 10.sp * X.value
                                 )
                                 Text(
                                     text = timeFormatter.format(Date(pathPoints.last().timestamp)),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontSize = 10.sp
+                                    fontSize = 10.sp * X.value
                                 )
                             }
                         }
@@ -653,9 +654,11 @@ fun RouteTrackerScreen() {
         if (showPermissionDialog) {
             AlertDialog(
                 onDismissRequest = { showPermissionDialog = false },
-                title = { Text("Location Permission Required") },
+                title = { Text(text = "Location Permission Required",
+                    fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value) },
                 text = {
-                    Text("Precise location is needed to track your route. Please enable location permission in settings.")
+                    Text("Precise location is needed for route tracking. Enable location permission in settings.",
+                        fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value)
                 },
                 confirmButton = {
                     TextButton(
@@ -663,17 +666,19 @@ fun RouteTrackerScreen() {
                             showPermissionDialog = false
                             Toast.makeText(
                                 context,
-                                "Please enable location permission in app settings",
+                                "Enable location permission in app settings",
                                 Toast.LENGTH_LONG
                             ).show()
                         }
                     ) {
-                        Text("OK")
+                        Text(text ="OK",
+                            fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value)
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showPermissionDialog = false }) {
-                        Text("Cancel")
+                        Text(text = "Cancel",
+                            fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value)
                     }
                 }
             )
@@ -682,11 +687,13 @@ fun RouteTrackerScreen() {
         if (showHistory) {
             AlertDialog(
                 onDismissRequest = { showHistory = false },
-                title = { Text("Saved Routes") },
+                title = { Text(text ="Saved Routes",
+                    fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value) },
                 text = {
                     Box(modifier = Modifier.height(300.dp)) {
                         if (savedRoutesList.isEmpty()) {
-                            Text("No routes saved yet.", modifier = Modifier.align(Alignment.Center))
+                            Text("No routes saved yet.", modifier = Modifier.align(Alignment.Center),
+                                fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value)
                         } else {
                             LazyColumn {
                                 items(savedRoutesList.reversed()) { route -> // Use reversed list directly
@@ -713,10 +720,16 @@ fun RouteTrackerScreen() {
                                                 showHistory = false
                                             },
                                         headlineContent = {
-                                            Text(SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault()).format(Date(route.timestamp)))
+                                            val date = SimpleDateFormat(
+                                                "MMM dd, yyyy HH:mm",
+                                                Locale.getDefault()
+                                            ).format(Date(route.timestamp))
+                                            Text(text = date,
+                                                fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value)
                                         },
                                         supportingContent = {
-                                            Text("${"%.2f".format(route.distanceMeters / 1000.0)} km | ${formatDuration(route.durationSeconds)}")
+                                            Text("${"%.2f".format(route.distanceMeters / 1000.0)} km | ${formatDuration(route.durationSeconds)}",
+                                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                                         },
                                         trailingContent = {
                                             IconButton(onClick = {
@@ -734,7 +747,9 @@ fun RouteTrackerScreen() {
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { showHistory = false }) { Text("Close") }
+                    TextButton(onClick = { showHistory = false }) {
+                        Text("Close", fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value)
+                    }
                 }
             )
         }

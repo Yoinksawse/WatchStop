@@ -162,8 +162,12 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
             else "Select a Geofence"
         AlertDialog(
             onDismissRequest = { showNoGeofenceDialog = false },
-            title = { Text(titleString) },
-            text = { Text(actionString) },
+            title = { Text(titleString,
+                fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value,
+                ) },
+            text = { Text(actionString,
+                fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value
+            ) },
             confirmButton = {
                 if (noGeofences) {
                     TextButton(onClick = {
@@ -171,13 +175,16 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                         val intent = Intent(context, MapActivity::class.java)
                         context.startActivity(intent)
                     }) {
-                        Text("Add Geofence")
+                        Text("Add Geofence",
+                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value)
                     }
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showNoGeofenceDialog = false }) {
-                    Text("Cancel")
+                    Text("Cancel",
+                        fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value
+                    )
                 }
             }
         )
@@ -186,7 +193,9 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Manage Group") },
+                title = { Text("Manage Group",
+                    fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value
+                ) },
                 navigationIcon = {
                     IconButton(onClick = onFinish) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
@@ -229,14 +238,17 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                 ) {
                     Icon(Icons.Default.Edit, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Edit Group Info")
+                    Text("Edit Group Info",
+                        fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value
+                    )
                 }
 
                 HorizontalDivider()
 
                 // ── Add Member (Invite) ────────────────────────────────────────
                 if (currentIsAdmin) {
-                    Text("Invite Member", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Invite Member", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                        fontSize = MaterialTheme.typography.titleMedium.fontSize * X.value)
                     var searchQuery by remember { mutableStateOf("") }
                     var searchResult by remember { mutableStateOf<Pair<String, String>?>(null) }
                     var searchError by remember { mutableStateOf("") }
@@ -276,11 +288,13 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                 }
                             },
                             enabled = searchQuery.isNotBlank() && !isSearching
-                        ) { Text(if (isSearching) "..." else "Search") }
+                        ) { Text(if (isSearching) "..." else "Search",
+                            fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value
+                        ) }
                     }
 
                     if (searchError.isNotEmpty()) {
-                        Text(searchError, color = destructiveColor, fontSize = 12.sp)
+                        Text(searchError, color = destructiveColor, fontSize = 12.sp * X.value)
                     }
 
                     searchResult?.let { (foundUid, foundName) ->
@@ -294,8 +308,8 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(foundName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                    Text("Invite to group", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(foundName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp * X.value)
+                                    Text("Invite to group", fontSize = 11.sp * X.value, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Button(
                                     onClick = {
@@ -310,7 +324,9 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                         }
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = successColor)
-                                ) { Text("Invite") }
+                                ) { Text("Invite",
+                                    fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value
+                                ) }
                             }
                         }
                     }
@@ -318,7 +334,8 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                 }
 
                 // ── Members Section ────────────────────────────────────────────
-                Text("Members", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Members", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                    fontSize = MaterialTheme.typography.titleMedium.fontSize * X.value)
                 memberNames.forEach { member ->
                     val role = memberRoles[member] ?: GroupRole.MEMBER
                     val isSharing = sharingEnabled[member] ?: false
@@ -351,11 +368,11 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                     Text(
                                         text = displayName + if (isSelf) " (you)" else "",
                                         fontWeight = FontWeight.SemiBold,
-                                        fontSize = 14.sp
+                                        fontSize = 14.sp * X.value
                                     )
                                     Text(
                                         text = role.displayName,
-                                        fontSize = 11.sp,
+                                        fontSize = 11.sp * X.value,
                                         color = when (role) {
                                             GroupRole.SUPER_ADMIN -> SUPERADMIN_ROLE_COLOUR
                                             GroupRole.ADMIN -> ADMIN_ROLE_COLOUR
@@ -372,7 +389,8 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                         modifier = Modifier.height(32.dp),
                                         shape = RoundedCornerShape(8.dp)
                                     ) {
-                                        Text(if (isSharing) "Stop Sharing" else "Share Location", fontSize = 11.sp)
+                                        Text(if (isSharing) "Stop Sharing" else "Share Location",
+                                            fontSize = 11.sp * X.value)
                                     }
                                 }
                                 if (!isSelf && currentIsAdmin) {
@@ -392,7 +410,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                             shape = RoundedCornerShape(8.dp),
                                             border = BorderStroke(1.dp, destructiveColor.copy(alpha = 0.5f))
                                         ) {
-                                            Text("Remove", fontSize = 11.sp, color = destructiveColor)
+                                            Text("Remove", fontSize = 11.sp * X.value, color = destructiveColor)
                                         }
                                     }
 
@@ -409,7 +427,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                             modifier = Modifier.height(32.dp),
                                             shape = RoundedCornerShape(8.dp)
                                         ) {
-                                            Text("Promote", fontSize = 11.sp, color = accentColor)
+                                            Text("Promote", fontSize = 11.sp * X.value, color = accentColor)
                                         }
                                     }
                                 }
@@ -428,7 +446,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                         shape = RoundedCornerShape(8.dp),
                                         border = BorderStroke(1.dp, destructiveColor.copy(alpha = 0.5f))
                                     ) {
-                                        Text("Remove", fontSize = 11.sp, color = destructiveColor)
+                                        Text("Remove", fontSize = 11.sp * X.value, color = destructiveColor)
                                     }
                                 }
                             }
@@ -439,7 +457,8 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                 // ── Pending Admin Applications ─────────────────────────────────
                 if (currentIsAdmin && adminApplications.isNotEmpty()) {
                     HorizontalDivider()
-                    Text("Pending Admin Applications", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Pending Admin Applications", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                        fontSize = MaterialTheme.typography.titleMedium.fontSize * X.value)
                     adminApplications.toList().forEach { applicant ->
                         val votes = appVotes.getOrPut(applicant) { mutableSetOf() }
                         val needed = ((memberNames.size - 1) / 2) + 1
@@ -456,8 +475,8 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     var appName by remember(applicant) { mutableStateOf(applicant) }
                                     LaunchedEffect(applicant) { appName = FirebaseRepository.getUsername(applicant) }
-                                    Text(appName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                    Text("${votes.size}/$needed approvals needed", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(appName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp * X.value)
+                                    Text("${votes.size}/$needed approvals needed", fontSize = 11.sp * X.value, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 TextButton(
                                     onClick = {
@@ -476,7 +495,8 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                         }
                                     }
                                 ) {
-                                    Text("Approve", color = successColor)
+                                    Text("Approve", color = successColor,
+                                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                                 }
                                 // FIX: Deny now calls FirebaseRepository.declineAdminApplication
                                 // (which uses groupRef with relative paths — admin safe).
@@ -494,7 +514,8 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                         }
                                     }
                                 ) {
-                                    Text("Deny", color = destructiveColor)
+                                    Text("Deny", color = destructiveColor,
+                                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                                 }
                             }
                         }
@@ -504,7 +525,8 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                 // ── Pending Invitations Section ────────────────────────────────
                 if (pendingInvitations.isNotEmpty()) {
                     HorizontalDivider()
-                    Text("Pending Invitations", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Pending Invitations", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                        fontSize = MaterialTheme.typography.titleMedium.fontSize * X.value)
                     val cancelScope = rememberCoroutineScope()
                     pendingInvitations.toList().forEach { invitedUid ->
                         Card(
@@ -518,7 +540,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                             ) {
                                 var invitedName by remember(invitedUid) { mutableStateOf(invitedUid) }
                                 LaunchedEffect(invitedUid) { invitedName = FirebaseRepository.getUsername(invitedUid) }
-                                Text(invitedName, modifier = Modifier.weight(1f), fontSize = 14.sp)
+                                Text(invitedName, modifier = Modifier.weight(1f), fontSize = 14.sp * X.value)
                                 if (currentIsAdmin) {
                                     IconButton(
                                         onClick = {
@@ -606,7 +628,9 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                         .padding(bottom = 32.dp),
                     shape = MaterialTheme.shapes.extraLarge
                 ) {
-                    Text("Save Changes")
+                    Text("Save Changes",
+                        fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value
+                    )
                 }
 
             }
@@ -653,7 +677,8 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                 title = {
                     Text(
                         text = "Edit Group Info",
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value
                     )
                 },
                 text = {
@@ -674,8 +699,11 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                         OutlinedTextField(
                             value = title,
                             onValueChange = { title = it },
-                            label = { Text("Group Title") },
-                            placeholder = { Text("Enter group title") },
+                            label = { Text("Group Title",
+                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value) },
+                            placeholder = { Text("Enter group title",
+                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value
+                            ) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             colors = yellowOutlineColorsTextField
@@ -685,8 +713,10 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                         OutlinedTextField(
                             value = description,
                             onValueChange = { description = it },
-                            label = { Text("Description") },
-                            placeholder = { Text("Enter group description") },
+                            label = { Text("Description",
+                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value) },
+                            placeholder = { Text("Enter group description",
+                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value) },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = 60.dp),
@@ -698,7 +728,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                         // Target Date & Time Section Header
                         Text(
                             text = "Target Date & Time",
-                            fontSize = 14.sp,
+                            fontSize = 14.sp * X.value,
                             fontWeight = FontWeight.Medium,
                             color = outlineColor,
                             modifier = Modifier.padding(top = 4.dp)
@@ -750,7 +780,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                                     MaterialTheme.colorScheme.onSurface
                                                 else
                                                     Color.Gray,
-                                                fontSize = 14.sp
+                                                fontSize = 14.sp * X.value
                                             )
                                         }
                                         if (selectedDate != null) {
@@ -809,7 +839,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                             Text(
                                                 text = String.format("%02d:%02d", timePickerState.hour, timePickerState.minute),
                                                 color = MaterialTheme.colorScheme.onSurface,
-                                                fontSize = 14.sp
+                                                fontSize = 14.sp * X.value
                                             )
                                         }
                                         Icon(
@@ -839,7 +869,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                         // Geofence Section Header
                         Text(
                             text = "Geofence",
-                            fontSize = 14.sp,
+                            fontSize = 14.sp * X.value,
                             fontWeight = FontWeight.Medium,
                             color = outlineColor,
                             modifier = Modifier.padding(top = 4.dp)
@@ -903,7 +933,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                                 color = if (selectedGeofenceId.isNotEmpty() || isExistingGroupGeofence)
                                                     MaterialTheme.colorScheme.onSurface
                                                 else Color.Gray, //ui stuff: grey for no geofence selected
-                                                fontSize = 14.sp
+                                                fontSize = 14.sp * X.value
                                             )
                                         }
                                         Icon(
@@ -931,7 +961,8 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                                         tint = outlineColor
                                                     )
                                                     Spacer(modifier = Modifier.width(8.dp))
-                                                    Text(gf.name)
+                                                    Text(gf.name,
+                                                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                                                 }
                                             },
                                             onClick = {
@@ -954,7 +985,8 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                                     tint = outlineColor
                                                 )
                                                 Spacer(modifier = Modifier.width(8.dp))
-                                                Text("Create New Geofence", color = outlineColor)
+                                                Text("Create New Geofence", color = outlineColor,
+                                                    fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                                             }
                                         },
                                         onClick = {
@@ -987,7 +1019,8 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Save Changes")
+                        Text("Save Changes",
+                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value)
                     }
                 },
                 dismissButton = {
@@ -996,7 +1029,8 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                         border = BorderStroke(1.dp, outlineColor.copy(alpha = 0.5f)),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("Cancel")
+                        Text("Cancel",
+                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value)
                     }
                 }
             )
@@ -1034,19 +1068,25 @@ fun TimePickerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Select Time") },
+        title = { Text("Select Time",
+            fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value
+        ) },
         text = { TimePicker(state = state) },
         confirmButton = {
             TextButton(
                 onClick = { onConfirm(state.hour, state.minute) },
                 colors = ButtonDefaults.textButtonColors(contentColor = outlineColor)
             ) {
-                Text("OK")
+                Text("OK",
+                    fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value
+                )
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Cancel",
+                    fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value
+                )
             }
         }
     )
@@ -1066,7 +1106,9 @@ fun DatePickerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Select Date") },
+        title = { Text("Select Date",
+            fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value
+        ) },
         text = { DatePicker(state = datePickerState) },
         confirmButton = {
             TextButton(
@@ -1078,12 +1120,14 @@ fun DatePickerDialog(
                 },
                 colors = ButtonDefaults.textButtonColors(contentColor = outlineColor)
             ) {
-                Text("OK")
+                Text("OK",
+                    fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Cancel",
+                    fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
             }
         }
     )

@@ -34,6 +34,7 @@ import com.example.watchstop.activities.EditGroupActivity
 import com.example.watchstop.activities.INACTIVE_COLOUR
 import com.example.watchstop.activities.TRAVELLING_COLOUR
 import com.example.watchstop.activities.ViewGroupMapActivity
+import com.example.watchstop.activities.X
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.data.CurrentGroupObject
@@ -149,11 +150,12 @@ fun GroupCard(
                                 color = primaryText,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f),
+                                fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value
                             )
                             Text(
                                 text = userRole.displayName,
-                                fontSize = 11.sp,
+                                fontSize = 11.sp * X.value,
                                 color = when (userRole) {
                                     GroupRole.SUPER_ADMIN -> SUPERADMIN_ROLE_COLOUR
                                     GroupRole.ADMIN -> ADMIN_ROLE_COLOUR
@@ -163,7 +165,7 @@ fun GroupCard(
                             )
                             Text(
                                 text = group.eventDateTime.format(DateTimeFormatter.ofPattern("dd MMM, HH:mm")),
-                                fontSize = 11.sp,
+                                fontSize = 11.sp * X.value,
                                 color = secondaryText,
                                 maxLines = 1
                             )
@@ -174,11 +176,12 @@ fun GroupCard(
                                     text = group.title,
                                     style = MaterialTheme.typography.titleMedium.copy(
                                         fontWeight = FontWeight.Bold),
-                                    color = primaryText
+                                    color = primaryText,
+                                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value
                                 )
                                 Text(
                                     text = userRole.displayName,
-                                    fontSize = 11.sp,
+                                    fontSize = 11.sp * X.value,
                                     color = when (userRole) {
                                         GroupRole.SUPER_ADMIN -> SUPERADMIN_ROLE_COLOUR
                                         GroupRole.ADMIN -> ADMIN_ROLE_COLOUR
@@ -212,7 +215,7 @@ fun GroupCard(
                             Text(
                                 text = "Disband",
                                 color = destructiveColor,
-                                fontSize = 13.sp,
+                                fontSize = 13.sp * X.value,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.clickable {
                                     coroutineScope.launch {
@@ -224,7 +227,7 @@ fun GroupCard(
                             Text(
                                 text = "Leave",
                                 color = destructiveColor,
-                                fontSize = 13.sp,
+                                fontSize = 13.sp * X.value,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.clickable {
                                     coroutineScope.launch {
@@ -260,7 +263,7 @@ fun GroupCard(
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = group.geofence?.name ?: "No Geofence",
-                            fontSize = 12.sp,
+                            fontSize = 12.sp * X.value,
                             color = secondaryText,
                             fontWeight = FontWeight.Medium
                         )
@@ -290,7 +293,7 @@ fun GroupCard(
                             Column {
                                 Text(
                                     text = group.description,
-                                    fontSize = 14.sp,
+                                    fontSize = 14.sp * X.value,
                                     color = primaryText.copy(alpha = 0.9f),
                                     maxLines = if (expanded) Int.MAX_VALUE else 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -305,7 +308,7 @@ fun GroupCard(
                                 if (isDescriptionOverflowing || expanded) {
                                     Text(
                                         text = if (expanded) "Tap to retract" else "Tap to expand",
-                                        fontSize = 11.sp,
+                                        fontSize = 11.sp * X.value,
                                         color = secondaryText,
                                         modifier = Modifier
                                             .align(Alignment.End)
@@ -350,7 +353,7 @@ fun GroupCard(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = displayName + if (memberUid == currentUid) " (you)" else "",
-                                    fontSize = 13.sp,
+                                    fontSize = 13.sp * X.value,
                                     color = primaryText
                                 )
                                 // Trip status badge
@@ -360,7 +363,7 @@ fun GroupCard(
                                         TripStatus.ARRIVED -> "Arrived"
                                         TripStatus.INACTIVE -> "Inactive"
                                     },
-                                    fontSize = 10.sp,
+                                    fontSize = 10.sp * X.value,
                                     fontWeight = FontWeight.SemiBold,
                                     color = when (status) {
                                         TripStatus.TRAVELLING -> TRAVELLING_COLOUR
@@ -373,7 +376,7 @@ fun GroupCard(
                             // Role badge
                             Text(
                                 text = memberRole.displayName,
-                                fontSize = 11.sp,
+                                fontSize = 11.sp * X.value,
                                 color = when (memberRole) {
                                     GroupRole.SUPER_ADMIN -> SUPERADMIN_ROLE_COLOUR
                                     GroupRole.ADMIN -> ADMIN_ROLE_COLOUR
@@ -503,7 +506,7 @@ fun GroupCard(
 
                         // Show Map button
                         SketchButton(
-                            text = "Show Map",
+                            text = "MapView",
                             onClick = {
                                 val intent = Intent(context, ViewGroupMapActivity::class.java)
                                 intent.putExtra("groupId", groupId)
@@ -553,7 +556,7 @@ fun GroupCard(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Admin application pending", fontSize = 12.sp,
+                            Text("Admin application pending", fontSize = 12.sp * X.value,
                                 color = accentColor, fontWeight = FontWeight.Bold)
                         }
                     }
@@ -570,10 +573,11 @@ fun GroupCard(
                             onDismissRequest = { showRemovalDialogFor = null },
                             title = {
                                 Text(
-                                    when {
+                                    text = when {
                                         isTargetAdmin && isSuperAdmin -> "Demote Admin"
                                         else -> "Complete Admin Demotion"
-                                    }
+                                    },
+                                    fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value
                                 )
                             },
                             text = {
@@ -581,14 +585,18 @@ fun GroupCard(
                                     when {
                                         // Direct admin removal by super admin
                                         isSuperAdmin -> {
-                                            Text("You are about to demote an Admin.")
-                                            Text("This operation will be conducted using SuperAdmin privileges.")
+                                            Text("You are about to demote an Admin.",
+                                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
+                                            Text("This operation will be conducted using SuperAdmin privileges.",
+                                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                                         }
 
                                         // Vote-based removal completed
                                         else -> {
-                                            Text("The vote to demote this Admin has reached the required threshold (${voteCount}/${needed}).")
-                                            Text("Do you want to complete the demotion process?")
+                                            Text("The vote to demote this Admin has reached the required threshold (${voteCount}/${needed}).",
+                                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
+                                            Text("Do you want to complete the demotion process?",
+                                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                                         }
                                     }
 
@@ -606,6 +614,7 @@ fun GroupCard(
                                     ) {
                                         Text(
                                             text = "Name of Target: $targetName",
+                                            fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value,
                                             modifier = Modifier.padding(12.dp),
                                             fontWeight = FontWeight.Bold
                                         )
@@ -613,11 +622,13 @@ fun GroupCard(
 
                                     // For non-super admin removal by super admin, show simple confirmation field
                                     if (!isTargetSuperAdmin && isSuperAdmin) {
-                                        Text("Type 'DEMOTE' to confirm:")
+                                        Text(text = "Type 'DEMOTE' to confirm:",
+                                            fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                                         OutlinedTextField(
                                             value = demoteConfirmationText,
                                             onValueChange = { demoteConfirmationText = it },
-                                            label = { Text("Confirmation") },
+                                            label = { Text(text = "Confirmation",
+                                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value) },
                                             singleLine = true
                                         )
                                     }
@@ -681,10 +692,11 @@ fun GroupCard(
                                     enabled = if (isTargetAdmin && isSuperAdmin) demoteConfirmationText == "DEMOTE" else true
                                 ) {
                                     Text(
-                                        when {
+                                        text = when {
                                             isTargetSuperAdmin -> "Remove"
                                             else -> "Demote to Member"
-                                        }
+                                        },
+                                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value
                                     )
                                 }
                             },
@@ -693,7 +705,8 @@ fun GroupCard(
                                     showRemovalDialogFor = null
                                     demoteConfirmationText = ""
                                 }) {
-                                    Text("Cancel")
+                                    Text(text = "Cancel",
+                                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                                 }
                             }
                         )
@@ -726,9 +739,9 @@ fun GroupCard(
                                         .padding(vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(applicantName, fontSize = 13.sp, color = primaryText,
+                                    Text(applicantName, fontSize = 13.sp * X.value, color = primaryText,
                                         modifier = Modifier.weight(1f))
-                                    Text("$voteCount/$needed", fontSize = 12.sp, color = secondaryText)
+                                    Text("$voteCount/$needed", fontSize = 12.sp * X.value, color = secondaryText)
                                     Spacer(modifier = Modifier.width(8.dp))
                                     TextButton(
                                         onClick = {
@@ -749,7 +762,7 @@ fun GroupCard(
                                         Text(
                                             text = if (hasVoted) "Voted" else "Approve",
                                             color = if (hasVoted) Color.Gray else successColor,
-                                            fontSize = 12.sp
+                                            fontSize = 12.sp * X.value
                                         )
                                     }
                                 }
@@ -768,7 +781,7 @@ fun GroupCard(
 fun MiniHeader(text: String, color: Color) {
     Text(
         text = text,
-        fontSize = 12.sp,
+        fontSize = 12.sp * X.value,
         color = color,
         fontWeight = FontWeight.SemiBold
     )
@@ -785,7 +798,7 @@ fun SketchTag(text: String, color: Color = Color.Gray) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-            fontSize = 11.sp,
+            fontSize = 11.sp * X.value,
             color = if (color == Color.Gray) MaterialTheme.colorScheme.onSurfaceVariant else color
         )
     }
@@ -800,7 +813,7 @@ fun SketchButton(text: String, onClick: () -> Unit) {
         shape = RoundedCornerShape(8.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f))
     ) {
-        Text(text, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(text, fontSize = 12.sp * X.value, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -833,7 +846,7 @@ private fun BadgedIcon(
         if (!isSuperAdmin && !isTargetSuperAdmin && !hasVoted) {
             Text(
                 text = "$voteCount",
-                fontSize = 8.sp,
+                fontSize = 8.sp * X.value,
                 color = Color.White,
                 modifier = Modifier
                     .align(Alignment.TopEnd)

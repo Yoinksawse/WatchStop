@@ -54,7 +54,8 @@ class LoginActivity : ComponentActivity() {
                     topBar = {
                         TopAppBar(
                             title = {
-                                Text("Login to WatchStop")
+                                Text("Login to WatchStop",
+                                    fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value)
                             },
                             navigationIcon = {
                                 IconButton( onClick = { finish() } ) {
@@ -116,13 +117,13 @@ fun LoginScreen(activity: Activity) {
     ) {
         Text(
             text = if (isLoginMode) "Welcome Back" else "Create Account",
-            fontSize = 28.sp,
+            fontSize = 28.sp * X.value,
             fontWeight = FontWeight.Bold,
             color = if (UserProfileObject.darkmode) Color.White else MaterialTheme.colorScheme.primary
         )
         Text(
             text = if (isLoginMode) "Sign in to continue" else "Sign up to get started",
-            fontSize = 16.sp,
+            fontSize = 16.sp * X.value,
             color = MaterialTheme.colorScheme.onBackground
         )
 
@@ -132,7 +133,9 @@ fun LoginScreen(activity: Activity) {
             OutlinedTextField(
                 value = username,
                 onValueChange = { username = it },
-                label = { Text("Username") },
+                label = { Text("Username",
+                    fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value
+                ) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
@@ -142,7 +145,8 @@ fun LoginScreen(activity: Activity) {
         OutlinedTextField(
             value = email,
             onValueChange = { email = it },
-            label = { Text("Email") },
+            label = { Text("Email",
+                fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
@@ -159,7 +163,8 @@ fun LoginScreen(activity: Activity) {
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
-            label = { Text("Password") },
+            label = { Text("Password",
+                fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value) },
             visualTransformation =
                 if (passwordVisible)
                     VisualTransformation.None
@@ -191,7 +196,7 @@ fun LoginScreen(activity: Activity) {
             Text(
                 text = errorMessage!!,
                 color = Color.Red,
-                fontSize = 14.sp
+                fontSize = 14.sp * X.value
             )
         }
 
@@ -232,7 +237,7 @@ fun LoginScreen(activity: Activity) {
         ) {
             Text(
                 text = if (isLoginMode) "Sign In" else "Sign Up",
-                fontSize = 16.sp
+                fontSize = 16.sp * X.value
             )
         }
 
@@ -242,7 +247,7 @@ fun LoginScreen(activity: Activity) {
         }) {
             Text(
                 text = if (isLoginMode) "Don't have account? Sign Up" else "Already have account? Sign In",
-                fontSize = 14.sp,
+                fontSize = 14.sp * X.value,
                 color = MaterialTheme.colorScheme.primary
             )
         }

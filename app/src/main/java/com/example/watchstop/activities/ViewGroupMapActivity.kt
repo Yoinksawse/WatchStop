@@ -307,7 +307,7 @@ fun ViewGroupMapScreen(groupId: String) {
                 // Group Info Section
                 Text(
                     text = "Group Info",
-                    fontSize = 14.sp,
+                    fontSize = 14.sp * X.value,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(bottom = 8.dp)
@@ -315,7 +315,7 @@ fun ViewGroupMapScreen(groupId: String) {
 
                 Text(
                     text = groupTitle,
-                    fontSize = 16.sp,
+                    fontSize = 16.sp * X.value,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(bottom = 4.dp)
@@ -335,7 +335,7 @@ fun ViewGroupMapScreen(groupId: String) {
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = geofenceName,
-                            fontSize = 13.sp,
+                            fontSize = 13.sp * X.value,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -351,7 +351,7 @@ fun ViewGroupMapScreen(groupId: String) {
                 // Active Members Section
                 Text(
                     text = "Active Members",
-                    fontSize = 14.sp,
+                    fontSize = 14.sp * X.value,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(bottom = 8.dp)
@@ -368,7 +368,7 @@ fun ViewGroupMapScreen(groupId: String) {
                     val sharingCount = groupMembers.count { locationSharingEnabled[it] == true }
                     Text(
                         text = "$sharingCount of ${groupMembers.size} members sharing location",
-                        fontSize = 12.sp,
+                        fontSize = 12.sp * X.value,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
@@ -424,7 +424,7 @@ private fun MemberListItemInline(
         // Name
         Text(
             text = name,
-            fontSize = 11.sp,
+            fontSize = 11.sp * X.value,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
@@ -440,7 +440,7 @@ private fun MemberListItemInline(
         ) {
             Text(
                 text = role.displayName,
-                fontSize = 8.sp,
+                fontSize = 8.sp * X.value,
                 color = roleColor,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(2.dp, 1.dp)
@@ -455,7 +455,7 @@ private fun MemberListItemInline(
         ) {
             Text(
                 text = statusText,
-                fontSize = 8.sp,
+                fontSize = 8.sp * X.value,
                 color = statusColor,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(2.dp, 1.dp)

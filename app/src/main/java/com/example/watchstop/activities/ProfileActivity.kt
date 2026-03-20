@@ -49,7 +49,8 @@ class ProfileActivity : ComponentActivity() {
                 Scaffold(
                     topBar = {
                         TopAppBar(
-                            title = { Text(text = "${UserProfileObject.userName}'s Profile") },
+                            title = { Text(text = "${UserProfileObject.userName}'s Profile",
+                                fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value) },
                             navigationIcon = {
                                 IconButton( onClick = { finish() } ) {
                                     Icon(
@@ -164,12 +165,14 @@ private fun ProfileScreen() {
 
         Text(
             text = accountHandle,
-            style = MaterialTheme.typography.titleLarge
+            style = MaterialTheme.typography.titleLarge,
+            fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value
         )
 
         Text(
             text = email,
             style = MaterialTheme.typography.bodyMedium,
+            fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 24.dp)
         )
@@ -182,7 +185,8 @@ private fun ProfileScreen() {
                 .padding(horizontal = 32.dp, vertical = 16.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(text = "Dark Mode", style = MaterialTheme.typography.titleMedium)
+            Text(text = "Dark Mode", style = MaterialTheme.typography.titleMedium,
+                fontSize = MaterialTheme.typography.titleMedium.fontSize * X.value)
             Switch(
                 checked = darkmode,
                 onCheckedChange = {
@@ -200,7 +204,9 @@ private fun ProfileScreen() {
                 .padding(horizontal = 32.dp, vertical = 8.dp),
             shape = RoundedCornerShape(8.dp)
         ) {
-            Text("Change Password")
+            Text("Change Password",
+                fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value
+            )
         }
         // -----------------------------------
 
@@ -232,7 +238,9 @@ private fun ProfileScreen() {
                     contentColor = MaterialTheme.colorScheme.onError
                 )
             ) {
-                Text("Logout")
+                Text("Logout",
+                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value
+                )
             }
         }
         Spacer(modifier = Modifier.height(32.dp))
@@ -246,13 +254,16 @@ fun ChangePasswordDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Update Password") },
+        title = { Text("Update Password",
+            fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value
+        ) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = newPassword,
                     onValueChange = { newPassword = it },
-                    label = { Text("New Password") },
+                    label = { Text("New Password",
+                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value) },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
@@ -260,7 +271,8 @@ fun ChangePasswordDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
                 OutlinedTextField(
                     value = confirmPassword,
                     onValueChange = { confirmPassword = it },
-                    label = { Text("Confirm New Password") },
+                    label = { Text("Confirm New Password",
+                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value) },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
@@ -269,7 +281,8 @@ fun ChangePasswordDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
                     Text(
                         text = "Passwords do not match",
                         color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
+                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = MaterialTheme.typography.bodySmall.fontSize * X.value
                     )
                 }
             }
@@ -279,12 +292,14 @@ fun ChangePasswordDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
                 enabled = newPassword.isNotEmpty() && newPassword == confirmPassword && newPassword.length >= 6,
                 onClick = { onConfirm(newPassword) }
             ) {
-                Text("Confirm")
+                Text("Confirm",
+                    fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Cancel",
+                    fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
             }
         }
     )

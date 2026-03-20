@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.watchstop.activities.LoginActivity
+import com.example.watchstop.activities.X
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.model.GroupEntry
@@ -98,7 +99,8 @@ fun GroupsScreen() {
                                 onClick = { selectedTabIndex = index },
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(title, fontWeight = FontWeight.Bold)
+                                        Text(title, fontWeight = FontWeight.Bold,
+                                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value)
                                         if (index == 1 && notifications.isNotEmpty()) {
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Box(
@@ -111,7 +113,7 @@ fun GroupsScreen() {
                                                 Text(
                                                     text = notifications.size.toString(),
                                                     color = Color.White,
-                                                    fontSize = 10.sp,
+                                                    fontSize = 10.sp * X.value,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                             }
@@ -140,7 +142,8 @@ fun GroupsScreen() {
                         onDismissRequest = { showFabMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Refresh Groups") },
+                            text = { Text("Refresh Groups",
+                                fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value) },
                             onClick = {
                                 showFabMenu = false
                                 refreshTrigger++
@@ -149,7 +152,8 @@ fun GroupsScreen() {
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Create New Group") },
+                            text = { Text("Create New Group",
+                                fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value) },
                             onClick = {
                                 showFabMenu = false
                                 if (UserProfileObject.isLoggedIn) showCreationDialog = true
@@ -172,16 +176,23 @@ fun GroupsScreen() {
         if (showLoginPrompt) {
             AlertDialog(
                 onDismissRequest = { showLoginPrompt = false },
-                title = { Text("Login Required") },
-                text = { Text("You must be logged in to create a group.") },
+                title = { Text("Login Required",
+                    fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value
+                ) },
+                text = { Text("You must be logged in to create a group.",
+                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value
+                ) },
                 confirmButton = {
                     TextButton(onClick = {
                         showLoginPrompt = false
                         context.startActivity(Intent(context, LoginActivity::class.java))
-                    }) { Text("Login") }
+                    }) { Text("Login",
+                        fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value
+                    ) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showLoginPrompt = false }) { Text("Cancel") }
+                    TextButton(onClick = { showLoginPrompt = false }) { Text("Cancel",
+                        fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value) }
                 }
             )
         }
@@ -211,7 +222,7 @@ private fun GroupsTabContent(
         item {
             Text(
                 text = "My Groups",
-                fontSize = 24.sp,
+                fontSize = 24.sp * X.value,
                 fontWeight = FontWeight.Bold,
                 color = if (darkmode) Color.White else Color.Black,
                 modifier = Modifier.padding(16.dp)
@@ -221,7 +232,8 @@ private fun GroupsTabContent(
         if (myGroups.isEmpty()) {
             item {
                 Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                    Text("No Groups yet — tap + to create one", color = Color.Gray)
+                    Text("No Groups yet — tap + to create one", color = Color.Gray,
+                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                 }
             }
         } else {
@@ -257,7 +269,7 @@ private fun NotificationsTabContent(
         item {
             Text(
                 text = "Notifications",
-                fontSize = 24.sp,
+                fontSize = 24.sp * X.value,
                 fontWeight = FontWeight.Bold,
                 color = if (darkmode) Color.White else Color.Black,
                 modifier = Modifier.padding(16.dp)
@@ -270,7 +282,8 @@ private fun NotificationsTabContent(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.NotificationsNone, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color.Gray)
                         Spacer(modifier = Modifier.height(16.dp))
-                        Text("No new notifications", color = Color.Gray)
+                        Text("No new notifications", color = Color.Gray,
+                            fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                     }
                 }
             }
@@ -328,7 +341,8 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
                     },
                     style = MaterialTheme.typography.labelMedium,
                     color = iconColor,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    fontSize = MaterialTheme.typography.labelMedium.fontSize * X.value
                 )
             }
 
@@ -347,7 +361,7 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
                     }
                 },
                 color = primaryText,
-                fontSize = 15.sp
+                fontSize = 15.sp * X.value
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -359,11 +373,15 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
                             onClick = { appScope.launch { FirebaseRepository.acceptInvitation(item.groupId) } },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(containerColor = NICEGREEN_COLOUR)
-                        ) { Text("Accept") }
+                        ) { Text("Accept",
+                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value
+                        ) }
                         OutlinedButton(
                             onClick = { appScope.launch { FirebaseRepository.declineInvitation(item.groupId) } },
                             modifier = Modifier.weight(1f)
-                        ) { Text("Decline") }
+                        ) { Text("Decline",
+                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value
+                        ) }
                     }
                     is NotificationItem.AdminApplication -> {
                         var processing by remember { mutableStateOf(false) }
@@ -390,7 +408,8 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
                             if (processing) {
                                 CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
                             } else {
-                                Text("Approve")
+                                Text("Approve",
+                                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value)
                             }
                         }
                         OutlinedButton(
@@ -408,7 +427,8 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
                             },
                             enabled = !processing,
                             modifier = Modifier.weight(1f)
-                        ) { Text("Decline", color = Color(0xFFFF3B30)) }
+                        ) { Text("Decline", color = Color(0xFFFF3B30),
+                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value) }
                     }
 
                     is NotificationItem.RemovalVote -> {
@@ -424,7 +444,8 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
                             },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3B30))
-                        ) { Text("Vote to Demote Admin") }
+                        ) { Text("Vote to Demote",
+                            fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value) }
 
                         OutlinedButton(
                             onClick = {
@@ -435,7 +456,8 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
                                 }
                             },
                             modifier = Modifier.weight(1f)
-                        ) { Text("Abstain", color = secondaryText) }
+                        ) { Text("Abstain", color = secondaryText,
+                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value) }
                     }
                 }
             }
@@ -448,24 +470,27 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
             onDismissRequest = { showDemotionDialog = false },
             title = {
                 Text(
-                    if (demotionThresholdMet) "Admin Demoted"
-                    else "Vote Recorded"
+                    text = if (demotionThresholdMet) "Admin Demoted"
+                    else "Vote Recorded",
+                    fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value
                 )
             },
             text = {
                 Text(
-                    if (demotionThresholdMet) {
+                    text = if (demotionThresholdMet) {
                         "$targetUsername has been demoted from Admin to Member. " +
                                 "The vote threshold has been reached."
                     } else {
                         "Your vote to demote $targetUsername has been recorded. " +
                                 "The demotion will occur when >50% of group members vote."
-                    }
+                    },
+                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value
                 )
             },
             confirmButton = {
                 TextButton(onClick = { showDemotionDialog = false }) {
-                    Text("OK")
+                    Text("OK",
+                        fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value)
                 }
             }
         )
@@ -483,17 +508,20 @@ private fun GroupCreationDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New Group") },
+        title = { Text("New Group",
+            fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = groupTitle,
                     onValueChange = { groupTitle = it },
-                    label = { Text("Group Name") },
+                    label = { Text("Group Name",
+                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value) },
                     singleLine = true
                 )
 
-                Text("Your role as creator:", style = MaterialTheme.typography.bodyMedium)
+                Text("Your role as creator:", style = MaterialTheme.typography.bodyMedium,
+                    fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                 listOf(
                     GroupRole.SUPER_ADMIN to "Super Admin — highest authority",
                     GroupRole.ADMIN to "Admin — can be voted out"
@@ -504,8 +532,8 @@ private fun GroupCreationDialog(
                     ) {
                         RadioButton(selected = selectedRole == role, onClick = { selectedRole = role })
                         Column {
-                            Text(role.displayName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            Text(description, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(role.displayName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp * X.value)
+                            Text(description, fontSize = 11.sp * X.value, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -522,8 +550,11 @@ private fun GroupCreationDialog(
                     }
                 },
                 enabled = groupTitle.isNotBlank()
-            ) { Text("Create") }
+            ) { Text("Create",
+                fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value
+            ) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel",
+            fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value) } }
     )
 }

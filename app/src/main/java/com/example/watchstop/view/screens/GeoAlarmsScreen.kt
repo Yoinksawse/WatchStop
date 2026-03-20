@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.watchstop.activities.MapActivity
+import com.example.watchstop.activities.X
 import com.example.watchstop.data.GeoAlarmsDatabase
 import com.example.watchstop.data.UserGeofencesDatabase
 import com.example.watchstop.data.UserProfileObject
@@ -110,7 +111,7 @@ fun GeoAlarmsScreen(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "My GeoAlarms",
-                    fontSize = 24.sp,
+                    fontSize = 24.sp * X.value,
                     fontWeight = FontWeight.Bold,
                     color = if (darkmode) Color.White else Color.Black,
                     modifier = Modifier.padding(bottom = 16.dp)
@@ -118,7 +119,7 @@ fun GeoAlarmsScreen(
 
                 if (GeoAlarmsDatabase.alarms.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No GeoAlarms set", color = Color.Gray)
+                        Text("No GeoAlarms set", color = Color.Gray, fontSize = 14.sp * X.value)
                     }
                 } else {
                     LazyColumn(
@@ -233,8 +234,8 @@ fun EditGeoAlarmDialog(
             else "Select a Geofence"
         AlertDialog(
             onDismissRequest = { showNoGeofenceDialog = false },
-            title = { Text(titleString) },
-            text = { Text(actionString) },
+            title = { Text(titleString, fontSize = 14.sp * X.value) },
+            text = { Text(actionString, fontSize = 14.sp * X.value) },
             confirmButton = {
                 if (noGeofences) {
                     TextButton(onClick = {
@@ -242,13 +243,13 @@ fun EditGeoAlarmDialog(
                         val intent = Intent(context, MapActivity::class.java)
                         context.startActivity(intent)
                     }) {
-                        Text("Add Geofence")
+                        Text("Add Geofence", fontSize = 14.sp * X.value)
                     }
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showNoGeofenceDialog = false }) {
-                    Text("Cancel")
+                    Text("Cancel", fontSize = 14.sp * X.value)
                 }
             }
         )
@@ -259,7 +260,8 @@ fun EditGeoAlarmDialog(
         title = {
             Text(
                 text = if (alarm.name.isEmpty()) "Add GeoAlarm" else "Edit GeoAlarm",
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp * X.value
             )
         },
         text = {
@@ -286,8 +288,8 @@ fun EditGeoAlarmDialog(
                     OutlinedTextField(
                         value = name.ifEmpty { "" },
                         onValueChange = { name = it },
-                        label = { Text("Name") },
-                        placeholder = { Text("Enter alarm name") },
+                        label = { Text("Name", fontSize = 14.sp * X.floatValue) },
+                        placeholder = { Text("Enter alarm name", fontSize = 14.sp * X.floatValue) },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
                         colors = yellowOutlineColorsTextField,
@@ -300,7 +302,7 @@ fun EditGeoAlarmDialog(
                     ) {
                         Text(
                             text = "Active",
-                            fontSize = 14.sp,
+                            fontSize = 14.sp * X.value,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Switch(
@@ -317,7 +319,7 @@ fun EditGeoAlarmDialog(
                 // Date/Time Section Header
                 Text(
                     text = "Schedule",
-                    fontSize = 14.sp,
+                    fontSize = 14.sp * X.value,
                     fontWeight = FontWeight.Medium,
                     color = outlineColor,
                     modifier = Modifier.padding(top = 4.dp)
@@ -369,18 +371,15 @@ fun EditGeoAlarmDialog(
                                         )
                                         Text(
                                             text = when {
-                                                selectedDate != null -> selectedDate!!.format(
-                                                    DateTimeFormatter.ofPattern("MMM d, yyyy")
-                                                )
-                                                selectedDay != null -> "Every " + selectedDay!!.name.lowercase()
-                                                    .replaceFirstChar { it.uppercase() }
+                                                selectedDate != null -> selectedDate!!.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
+                                                selectedDay != null -> "Every " + selectedDay!!.name.lowercase().replaceFirstChar { it.uppercase() }
                                                 else -> "Date"
                                             },
                                             color = if (selectedDate != null || selectedDay != null)
                                                 MaterialTheme.colorScheme.onSurface
                                             else
                                                 Color.Gray,
-                                            fontSize = 14.sp
+                                            fontSize = 14.sp * X.value
                                         )
                                     }
                                     if (selectedDate != null || selectedDay != null) {
@@ -426,7 +425,7 @@ fun EditGeoAlarmDialog(
                                                     MaterialTheme.colorScheme.onSurface
                                                 else
                                                     Color.Gray,
-                                                fontSize = 13.sp
+                                                fontSize = 13.sp * X.value
                                             )
                                             Icon(
                                                 Icons.Default.ArrowDropDown,
@@ -441,7 +440,10 @@ fun EditGeoAlarmDialog(
                                     ) {
                                         DayOfWeek.entries.forEach { day ->
                                             DropdownMenuItem(
-                                                text = { Text(day.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                                                text = { Text(
+                                                    day.name.lowercase().replaceFirstChar { it.uppercase() },
+                                                    fontSize = 14.sp * X.value
+                                                ) },
                                                 onClick = { selectedDay = day; dayExpanded = false }
                                             )
                                         }
@@ -488,17 +490,13 @@ fun EditGeoAlarmDialog(
                                                 MaterialTheme.colorScheme.onSurface
                                             else
                                                 Color.Gray,
-                                            fontSize = 13.sp
+                                            fontSize = 13.sp * X.value
                                         )
                                     }
                                 }
                             }
 
-                            Text(
-                                "to",
-                                color = Color.Gray,
-                                fontSize = 12.sp
-                            )
+                            Text("to", color = Color.Gray, fontSize = 12.sp * X.value)
 
                             // End Time
                             Card(
@@ -532,7 +530,7 @@ fun EditGeoAlarmDialog(
                                                 MaterialTheme.colorScheme.onSurface
                                             else
                                                 Color.Gray,
-                                            fontSize = 13.sp
+                                            fontSize = 13.sp * X.value
                                         )
                                     }
                                 }
@@ -559,7 +557,7 @@ fun EditGeoAlarmDialog(
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("Description (optional)") },
+                    label = { Text("Description (optional)", fontSize = 14.sp * X.value) },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2,
                     maxLines = 3,
@@ -569,7 +567,7 @@ fun EditGeoAlarmDialog(
                 // Geofence Section Header
                 Text(
                     text = "Geofence",
-                    fontSize = 14.sp,
+                    fontSize = 14.sp * X.value,
                     fontWeight = FontWeight.Medium,
                     color = outlineColor,
                     modifier = Modifier.padding(top = 4.dp)
@@ -630,7 +628,7 @@ fun EditGeoAlarmDialog(
                                             MaterialTheme.colorScheme.onSurface
                                         else
                                             Color.Gray,
-                                        fontSize = 14.sp
+                                        fontSize = 14.sp * X.value
                                     )
                                 }
                                 Icon(
@@ -658,7 +656,7 @@ fun EditGeoAlarmDialog(
                                                 tint = outlineColor
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            Text(gf.name)
+                                            Text(gf.name, fontSize = 14.sp * X.value)
                                         }
                                     },
                                     onClick = {
@@ -680,7 +678,7 @@ fun EditGeoAlarmDialog(
                                             tint = outlineColor
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Create New Geofence", color = outlineColor)
+                                        Text("Create New Geofence", color = outlineColor, fontSize = 14.sp * X.value)
                                     }
                                 },
                                 onClick = {
@@ -743,7 +741,7 @@ fun EditGeoAlarmDialog(
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Save Alarm")
+                Text("Save Alarm", fontSize = 14.sp * X.value)
             }
         },
         dismissButton = {
@@ -752,7 +750,7 @@ fun EditGeoAlarmDialog(
                 border = BorderStroke(1.dp, outlineColor.copy(alpha = 0.5f)),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Text("Cancel")
+                Text("Cancel", fontSize = 14.sp * X.value)
             }
         }
     )
@@ -834,19 +832,20 @@ fun TimePickerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Select Time") },
+        title = { Text("Select Time",
+            fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value) },
         text = { TimePicker(state = state) },
         confirmButton = {
             TextButton(
                 onClick = { onConfirm(state.hour, state.minute) },
                 colors = ButtonDefaults.textButtonColors(contentColor = outlineColor)
             ) {
-                Text("OK")
+                Text("OK", fontSize = 14.sp * X.value)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Cancel", fontSize = 14.sp * X.value)
             }
         }
     )
@@ -866,7 +865,8 @@ fun DatePickerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Select Date") },
+        title = { Text("Select Date",
+            fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value) },
         text = { DatePicker(state = datePickerState) },
         confirmButton = {
             TextButton(
@@ -878,12 +878,12 @@ fun DatePickerDialog(
                 },
                 colors = ButtonDefaults.textButtonColors(contentColor = outlineColor)
             ) {
-                Text("OK")
+                Text("OK", fontSize = 14.sp * X.value)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Cancel", fontSize = 14.sp * X.value)
             }
         }
     )
@@ -898,14 +898,14 @@ fun InvalidDateTimeDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Invalid Date + Time") },
-        text = { Text("The time you set has already passed today") },
+        title = { Text("Invalid Date + Time", fontSize = 14.sp * X.value) },
+        text = { Text("The time you set has already passed today", fontSize = 14.sp * X.value) },
         confirmButton = {
             TextButton(
                 onClick = { onConfirm() },
                 colors = ButtonDefaults.textButtonColors(contentColor = outlineColor)
             ) {
-                Text("OK")
+                Text("OK", fontSize = 14.sp * X.value)
             }
         },
     )

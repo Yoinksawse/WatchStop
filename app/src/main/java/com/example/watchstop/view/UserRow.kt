@@ -7,6 +7,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.example.watchstop.activities.X
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 
@@ -16,7 +17,7 @@ fun UserRow(userName: String, role: Int) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = userName,
-                fontSize = 14.sp,
+                fontSize = 14.sp * X.value,
                 fontWeight = FontWeight.Medium,
                 color = Color.Gray
             )
@@ -26,7 +27,7 @@ fun UserRow(userName: String, role: Int) {
                         1 -> "Admin"
                         else -> "Member"
                     },
-                fontSize = 18.sp,
+                fontSize = 18.sp * X.value,
                 fontWeight = FontWeight.Normal
             )
         }

@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.watchstop.activities.X
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.view.ui.theme.LocationAlarm
 import com.example.watchstop.view.ui.theme.WatchStopTheme
@@ -53,6 +54,9 @@ fun BottomTabBar(
                             text = tab.first,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            fontSize = if (tab.first != "Route Tracker") //exceitpion: Route Tracker text is too large
+                                MaterialTheme.typography.bodyMedium.fontSize * (Math.max(1.0f, X.value - 0.2f))
+                            else MaterialTheme.typography.bodyMedium.fontSize
                         )
                     },
                     icon = {

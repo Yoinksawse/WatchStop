@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.watchstop.activities.X
 import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 
@@ -42,7 +43,7 @@ fun GeoAlarmCard(title: String, weight: String) {
             ) {
                 Text(
                     text = title,
-                    fontSize = 16.sp,
+                    fontSize = 16.sp * X.value,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.weight(1f),
                     color = if (darkmode) Color.White else Color.Black
@@ -58,7 +59,7 @@ fun GeoAlarmCard(title: String, weight: String) {
 
                 Text(
                     text = weight,
-                    fontSize = 16.sp,
+                    fontSize = 16.sp * X.value,
                     fontWeight = FontWeight.Bold,
                     color = if (darkmode) Color.White else Color.Black
                 )
