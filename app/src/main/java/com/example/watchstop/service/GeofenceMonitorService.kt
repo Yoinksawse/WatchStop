@@ -171,13 +171,13 @@ class GeofenceMonitorService : Service() {
 
         serviceScope.launch {
             db.child("users").child(uid).child("groups").get()
-                .addOnFailureListener { Log.e("GeofenceService", "Failed to fetch user groups", it) }
+                //.addOnFailureListener { Log.e("GeofenceService", "Failed to fetch user groups", it) }
                 .addOnSuccessListener { userGroupsSnap ->
                     userGroupsSnap.children.forEach { snap ->
                         val groupId = snap.key ?: return@forEach
 
                         db.child("groups").child(groupId).get()
-                            .addOnFailureListener { Log.e("GeofenceService", "Failed to fetch group $groupId", it) }
+                            //.addOnFailureListener { Log.e("GeofenceService", "Failed to fetch group $groupId", it) }
                             .addOnSuccessListener { groupSnap ->
                                 val geofence = parseGeofenceFromSnapshot(groupSnap) ?: return@addOnSuccessListener
                                 val arrivedSet = arrivedMembers.getOrPut(groupId) { mutableSetOf() }
@@ -302,7 +302,6 @@ class GeofenceMonitorService : Service() {
 
         serviceScope.launch {
             db.child("users").child(uid).child("groups").get()
-                .addOnFailureListener { Log.e("GeofenceService", "Failed to fetch user groups", it) }
                 .addOnSuccessListener { userGroupsSnap ->
                     userGroupsSnap.children.mapNotNull { it.key }.forEach { groupId ->
                         pushLocationToGroup(db, groupId, uid, location)
@@ -318,7 +317,6 @@ class GeofenceMonitorService : Service() {
         location: Location
     ) {
         db.child("groups").child(groupId).child("locationSharingEnabled").child(uid).get()
-            .addOnFailureListener { Log.e("GeofenceService", "Failed to read sharing state for group $groupId", it) }
             .addOnSuccessListener { snap ->
                 if (snap.getValue(Boolean::class.java) == true) {
                     FirebaseRepository.pushLocation(groupId, uid, location.latitude, location.longitude)

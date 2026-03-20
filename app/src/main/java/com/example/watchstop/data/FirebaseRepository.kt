@@ -462,12 +462,42 @@ object FirebaseRepository {
 
     // ── Notifications ─────────────────────────────────────────────────────
 
+    private fun observeUserNotifications(uid: String): Flow<List<NotificationItem>> = callbackFlow {
+        if (uid.isEmpty()) { trySend(emptyList()); awaitClose {}; return@callbackFlow }
+        val ref = db.child("userNotifications").child(uid)
+        val listener = ref.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = snapshot.children.mapNotNull { child ->
+                    when (child.child("type").getValue(String::class.java)) {
+                        "locationForced" -> NotificationItem.LocationForced(
+                            groupId        = child.child("groupId").getValue(String::class.java) ?: return@mapNotNull null,
+                            groupTitle     = child.child("groupTitle").getValue(String::class.java) ?: "",
+                            forcedByName   = child.child("forcedByName").getValue(String::class.java) ?: "An admin",
+                            notificationId = child.child("notificationId").getValue(String::class.java) ?: return@mapNotNull null
+                        )
+                        "demoted" -> NotificationItem.Demoted(
+                            groupId        = child.child("groupId").getValue(String::class.java) ?: return@mapNotNull null,
+                            groupTitle     = child.child("groupTitle").getValue(String::class.java) ?: "",
+                            demotedByName  = child.child("demotedByName").getValue(String::class.java) ?: "An admin",
+                            notificationId = child.child("notificationId").getValue(String::class.java) ?: return@mapNotNull null
+                        )
+                        else -> null
+                    }
+                }
+                trySend(list)
+            }
+            override fun onCancelled(error: DatabaseError) { trySend(emptyList()) }
+        })
+        awaitClose { ref.removeEventListener(listener) }
+    }
+
     @RequiresApi(Build.VERSION_CODES.O)
     fun observeAllNotifications(uid: String): Flow<List<NotificationItem>> {
         return combine(
             observeMyInvitations(uid),
-            observeMyGroups(uid)
-        ) { invitations, groups ->
+            observeMyGroups(uid),
+            observeUserNotifications(uid)
+        ) { invitations, groups, userNotifications ->
             val list = mutableListOf<NotificationItem>()
 
             invitations.forEach { (id, group) ->
@@ -488,12 +518,12 @@ object FirebaseRepository {
                     val hasVoted = voters.contains(uid)
                     val hasAbstained = group.removalAbstentions[targetUid]?.contains(uid) == true
 
-                    // Only show notification if user hasn't voted AND hasn't abstained
                     if (targetUid != uid && !hasVoted && !hasAbstained) {
                         list.add(NotificationItem.RemovalVote(groupId, group.title, targetUid))
                     }
                 }
             }
+            userNotifications.forEach { list.add(it) }
             list
         }
     }
@@ -632,14 +662,31 @@ object FirebaseRepository {
 
         // ── SuperAdmin path: immediate demotion ───────────────────────────────
         if (entry.isSuperAdmin(voterUid)) {
-            // SuperAdmin has the root-level group write grant, so this batch is unrestricted.
             val updates = mapOf<String, Any?>(
                 "memberRoles/$targetUid"               to GroupRole.MEMBER.name,
                 "canToggleSharing/$targetUid"          to false,
-                "votesToRemoveAdmin/$targetUid"        to null,   // root write grant covers this
+                "votesToRemoveAdmin/$targetUid"        to null,
                 "voteCountsToRemoveAdmin/$targetUid"   to null
             )
             groupRef.updateChildren(updates).await()
+
+            // Notify the demoted member
+            val groupTitle = groupRef.child("title").get().await()
+                .getValue(String::class.java) ?: "your group"
+            val demotedByName = getUsername(voterUid)
+            val notificationId = "demoted_${groupId}_${targetUid}_${System.currentTimeMillis()}"
+            db.child("userNotifications").child(targetUid).child(notificationId).setValue(
+                mapOf(
+                    "type"           to "demoted",
+                    "groupId"        to groupId,
+                    "groupTitle"     to groupTitle,
+                    "demotedByUid"   to voterUid,
+                    "demotedByName"  to demotedByName,
+                    "notificationId" to notificationId,
+                    "timestamp"      to System.currentTimeMillis()
+                )
+            ).await()
+
             Log.d("FirebaseRepository", "SuperAdmin immediately demoted $targetUid")
             return true
         }
@@ -681,11 +728,6 @@ object FirebaseRepository {
         if (newCount > (memberCount / 2)) {
             Log.d("FirebaseRepository", "Threshold met — demoting $targetUid")
 
-            // All four paths need separate rule evaluations for a regular-member voter:
-            //   memberRoles/$targetUid        → vote-threshold branch in memberRoles rule ✓
-            //   canToggleSharing/$targetUid   → vote-threshold branch in canToggleSharing rule ✓
-            //   votesToRemoveAdmin/$targetUid → $targetUid null-write rule (target still ADMIN in DB) ✓
-            //   voteCountsToRemoveAdmin/$targetUid → null allowed by updated rule ✓
             val demoteUpdates = mapOf<String, Any?>(
                 "memberRoles/$targetUid"             to GroupRole.MEMBER.name,
                 "canToggleSharing/$targetUid"        to false,
@@ -693,6 +735,23 @@ object FirebaseRepository {
                 "voteCountsToRemoveAdmin/$targetUid" to null
             )
             groupRef.updateChildren(demoteUpdates).await()
+
+            // Notify the demoted member
+            val groupTitle = groupRef.child("title").get().await()
+                .getValue(String::class.java) ?: "your group"
+            val notificationId = "demoted_${groupId}_${targetUid}_${System.currentTimeMillis()}"
+            db.child("userNotifications").child(targetUid).child(notificationId).setValue(
+                mapOf(
+                    "type"           to "demoted",
+                    "groupId"        to groupId,
+                    "groupTitle"     to groupTitle,
+                    "demotedByUid"   to voterUid,
+                    "demotedByName"  to "group vote",
+                    "notificationId" to notificationId,
+                    "timestamp"      to System.currentTimeMillis()
+                )
+            ).await()
+
             Log.d("FirebaseRepository", "Auto-demoted $targetUid after vote threshold met")
             return true
         }
@@ -786,6 +845,42 @@ object FirebaseRepository {
         })
         awaitClose { ref.removeEventListener(listener) }
     }
+
+    /**
+     * Force location sharing ON for a target member and lock them out of toggling it.
+     * Allowed by DB rules for ADMIN and SUPER_ADMIN.
+     */
+    suspend fun forceLocationSharingOn(groupId: String, targetUid: String) {
+        val callerUid = ensureAuth()
+        val groupRef = db.child("groups").child(groupId)
+        val updates = mapOf<String, Any?>(
+            "locationSharingEnabled/$targetUid" to true,
+            "canToggleSharing/$targetUid"       to false
+        )
+        groupRef.updateChildren(updates).await()
+
+        val groupTitle = groupRef.child("title").get().await()
+            .getValue(String::class.java) ?: "your group"
+        val callerName = getUsername(callerUid)
+        val notificationId = "forceShare_${groupId}_${targetUid}_${System.currentTimeMillis()}"
+        db.child("userNotifications").child(targetUid).child(notificationId).setValue(
+            mapOf(
+                "type"           to "locationForced",
+                "groupId"        to groupId,
+                "groupTitle"     to groupTitle,
+                "forcedByUid"    to callerUid,
+                "forcedByName"   to callerName,
+                "notificationId" to notificationId,
+                "timestamp"      to System.currentTimeMillis()
+            )
+        ).await()
+        Log.d("FirebaseRepository", "forceLocationSharingOn: locked $targetUid in $groupId, notified")
+    }
+
+    suspend fun dismissLocationForcedNotification(uid: String, notificationId: String) {
+        db.child("userNotifications").child(uid).child(notificationId).removeValue().await()
+    }
+
 
     /** Search for a user by username or email. Returns (uid, displayName) or null. */
     suspend fun findUserByUsernameOrEmail(query: String): Pair<String, String>? {
@@ -1123,6 +1218,8 @@ sealed class NotificationItem {
     data class Invitation(val groupId: String, val groupTitle: String) : NotificationItem()
     data class AdminApplication(val groupId: String, val groupTitle: String, val applicantUid: String) : NotificationItem()
     data class RemovalVote(val groupId: String, val groupTitle: String, val targetUid: String) : NotificationItem()
+    data class LocationForced(val groupId: String, val groupTitle: String, val forcedByName: String, val notificationId: String) : NotificationItem()
+    data class Demoted(val groupId: String, val groupTitle: String, val demotedByName: String, val notificationId: String) : NotificationItem()
 }
 
 // ── Data classes ──────────────────────────────────────────────────────────────

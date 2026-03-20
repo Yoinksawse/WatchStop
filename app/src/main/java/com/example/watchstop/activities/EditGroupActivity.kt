@@ -110,6 +110,10 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
     // We never diff live Firebase vs local state — that was the root cause of the bug
     // where a member accepting an invitation got evicted when the admin pressed Save.
     val explicitlyRemovedMembers = remember { mutableStateOf(setOf<String>()) }
+    // Stores uid → displayName for removed members so we can show them in the UI
+    val removedMemberNames = remember { mutableStateMapOf<String, String>() }
+    // Cache of all resolved display names so Remove can snapshot the name immediately
+    val resolvedDisplayNames = remember { mutableStateMapOf<String, String>() }
 
     // pendingInvitations driven entirely by live Firebase observer.
     val pendingInvitations = remember { mutableStateListOf<String>() }
@@ -364,7 +368,11 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     var displayName by remember(member) { mutableStateOf(member) }
-                                    LaunchedEffect(member) { displayName = FirebaseRepository.getUsername(member) }
+                                    LaunchedEffect(member) {
+                                        displayName = FirebaseRepository.getUsername(member)
+                                        resolvedDisplayNames[member] = displayName
+                                    }
+
                                     Text(
                                         text = displayName + if (isSelf) " (you)" else "",
                                         fontWeight = FontWeight.SemiBold,
@@ -398,9 +406,9 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                     if (!isTargetSuperAdmin) {
                                         OutlinedButton(
                                             onClick = {
-                                                // FIX: record the explicit removal so Save passes
-                                                // exactly these UIDs to updateGroupMetadata.
                                                 explicitlyRemovedMembers.value += member
+                                                // Snapshot the display name before removing from memberNames
+                                                removedMemberNames[member] = resolvedDisplayNames[member] ?: member
                                                 memberNames.remove(member)
                                                 memberRoles.remove(member)
                                                 sharingEnabled.remove(member)
@@ -414,7 +422,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                         }
                                     }
 
-                                    // Promote button only for MEMBER when currentIsSuperAdmin
+                                    // Promote button only for MEMBER
                                     if (role == GroupRole.MEMBER) {
                                         OutlinedButton(
                                             onClick = {
@@ -430,13 +438,29 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                             Text("Promote", fontSize = 11.sp * X.value, color = accentColor)
                                         }
                                     }
+
+                                    // Demote button for ADMIN targets (not SUPER_ADMIN)
+                                    if (isTargetAdmin && currentIsSuperAdmin) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                // Only update local state — Firebase write happens on Save
+                                                memberRoles[member] = GroupRole.MEMBER
+                                                canToggle[member] = false
+                                            },
+                                            modifier = Modifier.height(32.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = BorderStroke(1.dp, destructiveColor.copy(alpha = 0.5f))
+                                        ) {
+                                            Text("Demote", fontSize = 11.sp * X.value, color = destructiveColor)
+                                        }
+                                    }
                                 }
                                 // For super admins, show immediate remove button (only for other super admins)
                                 if (!isSelf && isTargetSuperAdmin && currentIsSuperAdmin) {
                                     OutlinedButton(
                                         onClick = {
-                                            // Super admin can immediately remove another super admin
                                             explicitlyRemovedMembers.value += member
+                                            removedMemberNames[member] = resolvedDisplayNames[member] ?: member
                                             memberNames.remove(member)
                                             memberRoles.remove(member)
                                             sharingEnabled.remove(member)
@@ -452,6 +476,72 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                             }
                         }
                     }
+                }
+
+                // ── Pending Removals ───────────────────────────────────────────
+                if (explicitlyRemovedMembers.value.isNotEmpty()) {
+                    HorizontalDivider()
+                    Text(
+                        "Pending Removals",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = MaterialTheme.typography.titleMedium.fontSize * X.value,
+                        color = destructiveColor
+                    )
+                    Text(
+                        "These members will be removed when you tap Save Changes.",
+                        fontSize = 11.sp * X.value,
+                        color = secondaryText
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    explicitlyRemovedMembers.value.forEach { removedUid ->
+                        val name = removedMemberNames[removedUid] ?: removedUid
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = destructiveColor.copy(alpha = 0.08f)
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.PersonOff,
+                                    contentDescription = null,
+                                    tint = destructiveColor,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = name,
+                                    fontSize = 13.sp * X.value,
+                                    color = destructiveColor,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                // Allow undoing the removal before Save
+                                TextButton(
+                                    onClick = {
+                                        explicitlyRemovedMembers.value -= removedUid
+                                        removedMemberNames.remove(removedUid)
+                                        // Restore the member to the list
+                                        val originalRole = groupSnapshot.memberRoles[removedUid] ?: GroupRole.MEMBER
+                                        memberNames.add(removedUid)
+                                        memberRoles[removedUid] = originalRole
+                                        sharingEnabled[removedUid] = groupSnapshot.locationSharingEnabled[removedUid] ?: false
+                                        canToggle[removedUid] = groupSnapshot.canToggleSharing[removedUid] ?: false
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 8.dp)
+                                ) {
+                                    Text("Undo", fontSize = 11.sp * X.value, color = destructiveColor)
+                                }
+                            }
+                        }
+                    }
+                    HorizontalDivider()
                 }
 
                 // ── Pending Admin Applications ─────────────────────────────────
@@ -618,6 +708,17 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                 updated,
                                 explicitlyRemovedMembers.value
                             )
+
+                            // Fire demotions for any member whose role was locally changed
+                            // from ADMIN → MEMBER by the Demote button
+                            groupSnapshot.memberRoles.forEach { (uid, originalRole) ->
+                                val newRole = memberRoles[uid]
+                                if (originalRole == GroupRole.ADMIN && newRole == GroupRole.MEMBER) {
+                                    runCatching {
+                                        FirebaseRepository.voteToRemoveAdmin(groupId, uid, currentUser)
+                                    }
+                                }
+                            }
 
                             CurrentGroupObject.loadCurrentGroupEntry(updated)
                             onFinish()

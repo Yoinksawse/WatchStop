@@ -52,7 +52,9 @@ import com.example.watchstop.view.screens.SUPERADMIN_ROLE_COLOUR
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.model.LatLng
+import com.google.firebase.database.database
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.time.format.DateTimeFormatter
 
 @RequiresApi(Build.VERSION_CODES.O)
@@ -448,6 +450,47 @@ fun GroupCard(
                                         )
                                     }
                                 }
+
+                                // Force-share button: visible to ADMIN and SUPER_ADMIN
+                                // only when the target is not already force-locked
+                                if (isAdmin) {
+                                    val isForced = group.locationSharingEnabled[memberUid] == true
+                                            && group.canToggleSharing[memberUid] == false
+                                    if (!isForced) {
+                                        IconButton(
+                                            onClick = {
+                                                coroutineScope.launch {
+                                                    try {
+                                                        FirebaseRepository.forceLocationSharingOn(groupId, memberUid)
+                                                        val updated = GroupEntry(group)
+                                                        updated.locationSharingEnabled[memberUid] = true
+                                                        updated.canToggleSharing[memberUid] = false
+                                                        group = updated
+                                                    } catch (e: Exception) {
+                                                        Log.e("GroupCard", "forceLocationSharingOn failed", e)
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.LocationOn,
+                                                contentDescription = "Force location sharing on",
+                                                tint = Color(0xFFFF9500),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.LocationOn,
+                                            contentDescription = "Location sharing force-locked on",
+                                            tint = Color(0xFFFF9500).copy(alpha = 0.4f),
+                                            modifier = Modifier
+                                                .size(28.dp)
+                                                .padding(6.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -459,6 +502,8 @@ fun GroupCard(
 
                     val isSharing = group.locationSharingEnabled[currentUid] ?: false
                     val canCurrentToggle = group.canToggleSharing[currentUid] ?: false
+                    // Admins and super admins can always toggle their own sharing
+                    val effectivelyCanToggle = isAdmin || canCurrentToggle
                     val currentStatus = group.tripStatus[currentUid] ?: TripStatus.INACTIVE
 
                     Row(
@@ -468,16 +513,27 @@ fun GroupCard(
                         // Share / Stop Sharing button
                         SketchButton(
                             text = when {
-                                !canCurrentToggle -> "Sharing Locked"
+                                !effectivelyCanToggle -> "Sharing Locked"
                                 isSharing -> "Stop Sharing"
                                 else -> "Share Location"
                             },
                             onClick = {
-                                if (canCurrentToggle) {
+                                if (effectivelyCanToggle) {
                                     coroutineScope.launch {
                                         try {
-                                            FirebaseRepository.toggleLocationSharing(
-                                                groupId, currentUid, !isSharing)
+                                            if (isAdmin && !canCurrentToggle) {
+                                                // Admin bypasses the lock: write both fields atomically
+                                                val groupRef = com.google.firebase.Firebase.database.reference
+                                                    .child("groups").child(groupId)
+                                                val updates = mapOf<String, Any?>(
+                                                    "canToggleSharing/$currentUid" to true,
+                                                    "locationSharingEnabled/$currentUid" to !isSharing
+                                                )
+                                                groupRef.updateChildren(updates).await()
+                                            } else {
+                                                FirebaseRepository.toggleLocationSharing(
+                                                    groupId, currentUid, !isSharing)
+                                            }
                                             val updated = GroupEntry(group)
                                             updated.setSharing(currentUid, !isSharing)
                                             group = updated

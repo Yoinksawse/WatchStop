@@ -78,7 +78,7 @@ fun GroupsScreen() {
     }.collectAsState(initial = emptyList())
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Groups", "Pending Operations")
+    val tabs = listOf("Groups", "Updates")
 
     var showCreationDialog by remember { mutableStateOf(false) }
     var showLoginPrompt by remember { mutableStateOf(false) }
@@ -295,6 +295,7 @@ private fun NotificationsTabContent(
     }
 }
 
+//BEGIN HARDCODED NOTIFICATIONS
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
@@ -325,11 +326,15 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
                     is NotificationItem.Invitation -> Icons.Default.GroupAdd
                     is NotificationItem.AdminApplication -> Icons.Default.AdminPanelSettings
                     is NotificationItem.RemovalVote -> Icons.Default.HowToVote
+                    is NotificationItem.LocationForced -> Icons.Default.LocationOn
+                    is NotificationItem.Demoted -> Icons.Default.PersonOff
                 }
                 val iconColor = when (item) {
                     is NotificationItem.Invitation -> Color(0xFF007AFF)
                     is NotificationItem.AdminApplication -> NICEGREEN_COLOUR
                     is NotificationItem.RemovalVote -> Color(0xFFFF3B30)
+                    is NotificationItem.LocationForced -> Color(0xFFFF9500)
+                    is NotificationItem.Demoted -> Color(0xFFFF3B30)
                 }
                 Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
@@ -338,6 +343,8 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
                         is NotificationItem.Invitation -> "Group Invitation"
                         is NotificationItem.AdminApplication -> "Admin Application"
                         is NotificationItem.RemovalVote -> "Administrator Demotion Vote"
+                        is NotificationItem.LocationForced -> "Location Sharing Enabled"
+                        is NotificationItem.Demoted -> "Admin Role Removed"
                     },
                     style = MaterialTheme.typography.labelMedium,
                     color = iconColor,
@@ -359,6 +366,13 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
                     is NotificationItem.RemovalVote -> {
                         "Vote to demote $targetUsername as Admin in \"${item.groupTitle}\""
                     }
+                    is NotificationItem.LocationForced ->
+                        "${item.forcedByName} has enabled your location sharing in \"${item.groupTitle}\". Tap Confirm to acknowledge."
+                    is NotificationItem.Demoted ->
+                        if (item.demotedByName == "group vote")
+                            "You have been demoted from Admin to Member in \"${item.groupTitle}\" by a group vote."
+                        else
+                            "${item.demotedByName} has demoted you from Admin to Member in \"${item.groupTitle}\"."
                 },
                 color = primaryText,
                 fontSize = 15.sp * X.value
@@ -459,6 +473,39 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
                         ) { Text("Abstain", color = secondaryText,
                             fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value) }
                     }
+                    is NotificationItem.LocationForced -> {
+                        Button(
+                            onClick = {
+                                appScope.launch {
+                                    FirebaseRepository.dismissLocationForcedNotification(
+                                        UserProfileObject.uid ?: "", item.notificationId
+                                    )
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9500))
+                        ) {
+                            Text("Confirm",
+                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
+                        }
+                    }
+
+                    is NotificationItem.Demoted -> {
+                        Button(
+                            onClick = {
+                                appScope.launch {
+                                    FirebaseRepository.dismissLocationForcedNotification(
+                                        UserProfileObject.uid ?: "", item.notificationId
+                                    )
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3B30))
+                        ) {
+                            Text("Confirm",
+                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
+                        }
+                    }
                 }
             }
         }
@@ -496,6 +543,8 @@ private fun NotificationRow(item: NotificationItem, appScope: CoroutineScope) {
         )
     }
 }
+
+//END HARDCODED NOTIFICATIONS
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
