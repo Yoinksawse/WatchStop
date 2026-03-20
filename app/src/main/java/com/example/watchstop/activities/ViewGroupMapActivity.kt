@@ -434,7 +434,7 @@ private fun MemberListItemInline(
             modifier = Modifier.weight(1f)
         )
 
-        //role badge
+        // Role badge
         Surface(
             shape = RoundedCornerShape(3.dp),
             color = roleColor.copy(alpha = 0.18f),
@@ -447,13 +447,11 @@ private fun MemberListItemInline(
                 color = roleColor,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)  // fillMaxWidth removed
             )
         }
 
-        //status badgee
+        // Status badge
         Surface(
             shape = RoundedCornerShape(3.dp),
             color = statusColor.copy(alpha = 0.15f),
@@ -466,9 +464,7 @@ private fun MemberListItemInline(
                 color = statusColor,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)  // fillMaxWidth removed
             )
         }
     }

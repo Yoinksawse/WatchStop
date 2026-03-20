@@ -153,11 +153,6 @@ class GeofenceMonitorService : Service() {
                 triggerGeoAlarm(alarm)
             } else if (!isInside && activeAlarms.contains(alarm.id)) {
                 activeAlarms.remove(alarm.id)
-
-                // Optionally: You might want to deactivate the alarm when leaving
-                // Commented out because you may want alarms to trigger again next time
-                // deactivateSingleAlarm(alarm.id)
-
                 stopAlarmIfNoneActive()
             }
         }
@@ -170,108 +165,73 @@ class GeofenceMonitorService : Service() {
      */
     @RequiresApi(Build.VERSION_CODES.O)
     private fun checkGroupGeofencesAndNotify(location: Location) {
-        val uid = FirebaseRepository.currentUid ?: run {
-            Log.w("GeofenceService", "checkGroupGeofencesAndNotify skipped: No authenticated user")
-            return
-        }
-
+        val uid = FirebaseRepository.currentUid ?: return
         val userLatLng = LatLng(location.latitude, location.longitude)
+        val db = FirebaseDatabase.getInstance().reference
 
         serviceScope.launch {
-            try {
-                // Get user's groups
-                FirebaseDatabase.getInstance().reference
-                    .child("users").child(uid).child("groups")
-                    .get()
-                    .addOnSuccessListener { userGroupsSnap ->
-                        userGroupsSnap.children.forEach { groupIndexSnap ->
-                            val groupId = groupIndexSnap.key ?: return@forEach
+            db.child("users").child(uid).child("groups").get()
+                .addOnFailureListener { Log.e("GeofenceService", "Failed to fetch user groups", it) }
+                .addOnSuccessListener { userGroupsSnap ->
+                    userGroupsSnap.children.forEach { snap ->
+                        val groupId = snap.key ?: return@forEach
 
-                            // Fetch group data to get geofence
-                            FirebaseDatabase.getInstance().reference
-                                .child("groups").child(groupId)
-                                .get()
-                                .addOnSuccessListener { groupSnap ->
-                                    val geofenceSnap = groupSnap.child("geofence")
-                                    if (geofenceSnap.exists()) {
-                                        try {
-                                            val id = geofenceSnap.child("id").getValue(String::class.java)
-                                            val name = geofenceSnap.child("name").getValue(String::class.java) ?: ""
-                                            val centerLatValue = geofenceSnap.child("center").child("lat").getValue(Double::class.java) ?: 0.0
-                                            val centerLngValue = geofenceSnap.child("center").child("lng").getValue(Double::class.java) ?: 0.0
-                                            val typeId = geofenceSnap.child("typeId").getValue(Int::class.java) ?: 0
-                                            val radius = geofenceSnap.child("radius").getValue(Double::class.java) ?: 0.0
-                                            val points = geofenceSnap.child("points").children.mapNotNull { ptSnap ->
-                                                val lat = ptSnap.child("lat").getValue(Double::class.java)
-                                                val lng = ptSnap.child("lng").getValue(Double::class.java)
-                                                if (lat != null && lng != null) LatLng(lat, lng) else null
+                        db.child("groups").child(groupId).get()
+                            .addOnFailureListener { Log.e("GeofenceService", "Failed to fetch group $groupId", it) }
+                            .addOnSuccessListener { groupSnap ->
+                                val geofence = parseGeofenceFromSnapshot(groupSnap) ?: return@addOnSuccessListener
+                                val arrivedSet = arrivedMembers.getOrPut(groupId) { mutableSetOf() }
+                                val isInside = isPointInGeofence(userLatLng, geofence)
+
+                                when {
+                                    isInside && uid !in arrivedSet -> {
+                                        arrivedSet.add(uid)
+                                        val groupTitle = groupSnap.child("title").getValue(String::class.java) ?: "Group"
+                                        val tripStatus = groupSnap.child("tripStatus").child(uid).getValue(String::class.java)
+
+                                        if (tripStatus == TripStatus.TRAVELLING.name) {
+                                            serviceScope.launch {
+                                                runCatching { FirebaseRepository.setTripStatus(groupId, uid, TripStatus.ARRIVED) }
+                                                    .onFailure { Log.e("GeofenceService", "Failed to update trip status", it) }
                                             }
-
-                                            if (id != null) {
-                                                val geofence = GeofenceArea(
-                                                    id = id,
-                                                    name = name,
-                                                    center = LatLng(centerLatValue, centerLngValue),
-                                                    typeId = typeId,
-                                                    radius = radius,
-                                                    points = points
-                                                )
-
-                                                // Check if user is inside this geofence
-                                                val isInside = isPointInGeofence(userLatLng, geofence)
-                                                val arrivedSet = arrivedMembers.getOrPut(groupId) { mutableSetOf() }
-
-                                                if (isInside && !arrivedSet.contains(uid)) {
-                                                    // User just arrived at this geofence
-                                                    arrivedSet.add(uid)
-
-                                                    // Get current trip status
-                                                    val currentTripStatus = groupSnap.child("tripStatus").child(uid).getValue(String::class.java)
-
-                                                    // Check if user is on an active trip
-                                                    if (currentTripStatus == TripStatus.TRAVELLING.name) {
-                                                        // Auto-update trip status to ARRIVED - now in coroutine scope
-                                                        serviceScope.launch {
-                                                            try {
-                                                                FirebaseRepository.setTripStatus(groupId, uid, TripStatus.ARRIVED)
-                                                                Log.i("GeofenceService", "Auto-updated trip status to ARRIVED for user $uid in group $groupId")
-                                                            } catch (e: Exception) {
-                                                                Log.e("GeofenceService", "Failed to update trip status: ${e.message}")
-                                                            }
-                                                        }
-                                                    }
-
-                                                    // --- UPDATED: Show local notification to the user (only if trip is active) ---
-                                                    notifyUserOfArrival(groupId, groupSnap.child("title").getValue(String::class.java) ?: "Group", currentTripStatus)
-
-                                                    // Send notification to other group members
-                                                    sendMemberArrivedNotification(groupId, groupSnap.child("title").getValue(String::class.java) ?: "Group", uid)
-                                                    Log.i("GeofenceService", "✓ Member $uid arrived at geofence in group $groupId")
-                                                } else if (!isInside && arrivedSet.contains(uid)) {
-                                                    // User left the geofence
-                                                    arrivedSet.remove(uid)
-                                                    Log.d("GeofenceService", "Member $uid left geofence in group $groupId")
-                                                }
-                                            }
-                                        } catch (e: Exception) {
-                                            Log.e("GeofenceService", "Error parsing geofence: ${e.message}")
                                         }
+
+                                        notifyUserOfArrival(groupId, groupTitle, tripStatus)
+                                        sendMemberArrivedNotification(groupId, groupTitle, uid)
+                                        Log.i("GeofenceService", "User $uid arrived at geofence in group $groupId")
                                     }
+                                    !isInside && uid in arrivedSet -> arrivedSet.remove(uid)
                                 }
-                                .addOnFailureListener { e ->
-                                    Log.w("GeofenceService", "Failed to fetch group $groupId: ${e.message}")
-                                }
-                        }
+                            }
                     }
-                    .addOnFailureListener { e ->
-                        Log.w("GeofenceService", "Failed to fetch user groups: ${e.message}")
-                    }
-            } catch (e: Exception) {
-                Log.e("GeofenceService", "checkGroupGeofencesAndNotify error", e)
-            }
+                }
         }
     }
 
+    private fun parseGeofenceFromSnapshot(groupSnap: com.google.firebase.database.DataSnapshot): GeofenceArea? {
+        val snap = groupSnap.child("geofence").takeIf { it.exists() } ?: return null
+        val id = snap.child("id").getValue(String::class.java) ?: return null
+        return try {
+            GeofenceArea(
+                id = id,
+                name = snap.child("name").getValue(String::class.java) ?: "",
+                center = LatLng(
+                    snap.child("center").child("lat").getValue(Double::class.java) ?: 0.0,
+                    snap.child("center").child("lng").getValue(Double::class.java) ?: 0.0
+                ),
+                typeId = snap.child("typeId").getValue(Int::class.java) ?: 0,
+                radius = snap.child("radius").getValue(Double::class.java) ?: 0.0,
+                points = snap.child("points").children.mapNotNull { pt ->
+                    val lat = pt.child("lat").getValue(Double::class.java)
+                    val lng = pt.child("lng").getValue(Double::class.java)
+                    if (lat != null && lng != null) LatLng(lat, lng) else null
+                }
+            )
+        } catch (e: Exception) {
+            Log.e("GeofenceService", "Failed to parse geofence in group ${groupSnap.key}", e)
+            null
+        }
+    }
     private fun sendMemberArrivedNotification(groupId: String, groupTitle: String, memberId: String) {
         serviceScope.launch {
             try {
@@ -337,94 +297,37 @@ class GeofenceMonitorService : Service() {
     // ── Live Location Push to Groups ──────────────────────────────────────
 
     private fun pushLiveLocationToGroups(location: Location) {
-        val uid = FirebaseRepository.currentUid ?: run {
-            Log.w("GeofenceService", "pushLiveLocation skipped: No authenticated user")
-            return
-        }
-
-        Log.d("GeofenceService", "pushLiveLocation: Starting for uid=$uid, lat=${location.latitude}, lng=${location.longitude}")
+        val uid = FirebaseRepository.currentUid ?: return
+        val db = FirebaseDatabase.getInstance().reference
 
         serviceScope.launch {
-            try {
-                FirebaseDatabase.getInstance().reference
-                    .child("users").child(uid).child("groups")
-                    .get()
-                    .addOnSuccessListener { userGroupsSnap ->
-                        val groupCount = userGroupsSnap.childrenCount
-                        Log.d("GeofenceService", "pushLiveLocation: Found $groupCount groups for user")
-
-                        if (groupCount == 0L) {
-                            Log.d("GeofenceService", "pushLiveLocation: User has no groups, skipping")
-                            return@addOnSuccessListener
-                        }
-
-                        userGroupsSnap.children.forEach { groupIndexSnap ->
-                            val groupId = groupIndexSnap.key ?: return@forEach
-
-                            FirebaseDatabase.getInstance().reference
-                                .child("groups").child(groupId)
-                                .get()
-                                .addOnSuccessListener { groupSnap ->
-                                    val isSharing = groupSnap
-                                        .child("locationSharingEnabled")
-                                        .child(uid)
-                                        .getValue(Boolean::class.java) ?: false
-
-                                    Log.d("GeofenceService", "pushLiveLocation: Group $groupId - sharing=$isSharing")
-
-                                    if (isSharing) {
-                                        FirebaseRepository.pushLocation(
-                                            groupId, uid,
-                                            location.latitude, location.longitude
-                                        )
-                                        Log.i("GeofenceService", "✓ Location pushed to group $groupId: (${location.latitude}, ${location.longitude})")
-                                    } else {
-                                        Log.d("GeofenceService", "pushLiveLocation: Sharing disabled for group $groupId, skipping")
-                                    }
-                                }
-                                .addOnFailureListener { e ->
-                                    Log.w("GeofenceService", "pushLiveLocation: Failed to read group $groupId: ${e.message}")
-                                }
-                        }
+            db.child("users").child(uid).child("groups").get()
+                .addOnFailureListener { Log.e("GeofenceService", "Failed to fetch user groups", it) }
+                .addOnSuccessListener { userGroupsSnap ->
+                    userGroupsSnap.children.mapNotNull { it.key }.forEach { groupId ->
+                        pushLocationToGroup(db, groupId, uid, location)
                     }
-                    .addOnFailureListener { e ->
-                        Log.w("GeofenceService", "pushLiveLocation: Failed to read user groups: ${e.message}")
-                    }
-            } catch (e: Exception) {
-                Log.e("GeofenceService", "pushLiveLocationToGroups error", e)
+                }
+        }
+    }
+
+    private fun pushLocationToGroup(
+        db: com.google.firebase.database.DatabaseReference,
+        groupId: String,
+        uid: String,
+        location: Location
+    ) {
+        db.child("groups").child(groupId).child("locationSharingEnabled").child(uid).get()
+            .addOnFailureListener { Log.e("GeofenceService", "Failed to read sharing state for group $groupId", it) }
+            .addOnSuccessListener { snap ->
+                if (snap.getValue(Boolean::class.java) == true) {
+                    FirebaseRepository.pushLocation(groupId, uid, location.latitude, location.longitude)
+                }
             }
-        }
     }
 
-    // ── Geofence Math ─────────────────────────────────────────────────────
-
-    fun isPointInGeofence(point: LatLng, geofence: GeofenceArea): Boolean {
-        return if (geofence.typeId == 1) {
-            val results = FloatArray(1)
-            Location.distanceBetween(
-                geofence.center.latitude, geofence.center.longitude,
-                point.latitude, point.longitude, results
-            )
-            results[0] <= geofence.radius
-        } else {
-            isPointInPolygon(point, geofence.points)
-        }
-    }
-
-    fun isPointInPolygon(point: LatLng, polygon: List<LatLng>): Boolean {
-        if (polygon.size < 3) return false
-        var intersectCount = 0
-        for (i in polygon.indices) {
-            val p1 = polygon[i]
-            val p2 = polygon[(i + 1) % polygon.size]
-            if (((p1.latitude > point.latitude) != (p2.latitude > point.latitude)) &&
-                (point.longitude < (p2.longitude - p1.longitude) *
-                        (point.latitude - p1.latitude) /
-                        (p2.latitude - p1.latitude) + p1.longitude)
-            ) intersectCount++
-        }
-        return intersectCount % 2 != 0
-    }
+    fun isPointInGeofence(point: LatLng, geofence: GeofenceArea) =
+        checkPointInGeofence(point, geofence)
 
     // ── Alarm Audio / Vibration ───────────────────────────────────────────
 
@@ -617,11 +520,8 @@ class GeofenceMonitorService : Service() {
                         // Update local liveAlarms list
                         serviceScope.launch {
                             liveAlarms = liveAlarms.map { alarm ->
-                                if (alarmsToDeactivate.contains(alarm.id)) {
-                                    alarm.copy(active = false)
-                                } else {
-                                    alarm
-                                }
+                                if (!alarmsToDeactivate.contains(alarm.id)) alarm
+                                else alarm.copy(active = false)
                             }
                         }
 
@@ -638,15 +538,13 @@ class GeofenceMonitorService : Service() {
                 }
             )
         } else {
-            // Just cancel notifications if no Firebase update needed
+            //just cancel notifications if no Firebase update needed
             val manager = getSystemService(NotificationManager::class.java)
             activeAlarms.forEach { alarmId ->
                 manager?.cancel("alarm_$alarmId".hashCode())
             }
             manager?.cancel("multiple_alarms_summary".hashCode())
         }
-
-        // Clear active alarms set
         activeAlarms.clear()
     }
 
@@ -684,7 +582,7 @@ class GeofenceMonitorService : Service() {
     }
 
     companion object {
-        // Stateless helpers — callable without a service instance
+        //stateless helpers: callable without instantiating the service
         fun checkPointInGeofence(point: LatLng, geofence: GeofenceArea): Boolean {
             return if (geofence.typeId == 1) {
                 val results = FloatArray(1)
@@ -693,9 +591,7 @@ class GeofenceMonitorService : Service() {
                     point.latitude, point.longitude, results
                 )
                 results[0] <= geofence.radius
-            } else {
-                checkPointInPolygon(point, geofence.points)
-            }
+            } else checkPointInPolygon(point, geofence.points)
         }
 
         fun checkPointInPolygon(point: LatLng, polygon: List<LatLng>): Boolean {
