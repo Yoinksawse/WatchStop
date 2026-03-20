@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -23,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -432,33 +434,41 @@ private fun MemberListItemInline(
             modifier = Modifier.weight(1f)
         )
 
-        // Role Badge
+        //role badge
         Surface(
-            shape = RoundedCornerShape(2.dp),
-            color = roleColor.copy(alpha = 0.2f),
-            modifier = Modifier.wrapContentWidth()
+            shape = RoundedCornerShape(3.dp),
+            color = roleColor.copy(alpha = 0.18f),
+            border = BorderStroke(0.5.dp, roleColor.copy(alpha = 0.45f)),
+            modifier = Modifier.widthIn(min = 72.dp)
         ) {
             Text(
                 text = role.displayName,
-                fontSize = 8.sp * X.value,
+                fontSize = 10.sp * X.value,
                 color = roleColor,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(2.dp, 1.dp)
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
             )
         }
 
-        // Status Badge
+        //status badgee
         Surface(
-            shape = RoundedCornerShape(2.dp),
-            color = statusColor.copy(alpha = 0.2f),
-            modifier = Modifier.wrapContentWidth()
+            shape = RoundedCornerShape(3.dp),
+            color = statusColor.copy(alpha = 0.15f),
+            border = BorderStroke(0.5.dp, statusColor.copy(alpha = 0.5f)),
+            modifier = Modifier.widthIn(min = 72.dp)
         ) {
             Text(
                 text = statusText,
-                fontSize = 8.sp * X.value,
+                fontSize = 10.sp * X.value,
                 color = statusColor,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(2.dp, 1.dp)
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
             )
         }
     }

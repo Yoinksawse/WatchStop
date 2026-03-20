@@ -44,7 +44,7 @@ import java.time.LocalDateTime
 
 val SUPERADMIN_ROLE_COLOUR = Color(0xFF007AFF)
 val ADMIN_ROLE_COLOUR = Color(0xFF007AFF)
-val MEMBER_ROLE_COLOUR = SlateGrey
+val MEMBER_ROLE_COLOUR = Color(0xFF00A99D)
 val NICEGREEN_COLOUR = Color(0xFF34C759)
 
 @RequiresApi(Build.VERSION_CODES.O)

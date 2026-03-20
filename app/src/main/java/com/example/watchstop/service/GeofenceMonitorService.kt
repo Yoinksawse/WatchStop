@@ -398,7 +398,7 @@ class GeofenceMonitorService : Service() {
 
     // ── Geofence Math ─────────────────────────────────────────────────────
 
-    private fun isPointInGeofence(point: LatLng, geofence: GeofenceArea): Boolean {
+    fun isPointInGeofence(point: LatLng, geofence: GeofenceArea): Boolean {
         return if (geofence.typeId == 1) {
             val results = FloatArray(1)
             Location.distanceBetween(
@@ -411,7 +411,7 @@ class GeofenceMonitorService : Service() {
         }
     }
 
-    private fun isPointInPolygon(point: LatLng, polygon: List<LatLng>): Boolean {
+    fun isPointInPolygon(point: LatLng, polygon: List<LatLng>): Boolean {
         if (polygon.size < 3) return false
         var intersectCount = 0
         for (i in polygon.indices) {
@@ -526,34 +526,6 @@ class GeofenceMonitorService : Service() {
 
         // Use a fixed ID for the summary notification
         manager?.notify("multiple_alarms_summary".hashCode(), summaryNotification)
-    }
-
-    private fun updateNotificationForMultipleAlarms() {
-        val manager = getSystemService(NotificationManager::class.java)
-        val count = activeAlarms.size
-
-        if (count > 1) {
-            val stopIntent = Intent(this, StopAlarmReceiver::class.java)
-            val stopPendingIntent = PendingIntent.getBroadcast(
-                this,
-                0,
-                stopIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            val notification = NotificationCompat.Builder(this, ALARM_CHANNEL_ID)
-                .setContentTitle("Multiple Alarms Active")
-                .setContentText("$count geofence alarms are currently triggered")
-                .setSmallIcon(R.drawable.ic_lock_idle_alarm)
-                .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_ALARM)
-                .addAction(R.drawable.ic_media_pause, "Stop All", stopPendingIntent)
-                .setContentIntent(stopPendingIntent)
-                .setOngoing(true)
-                .build()
-
-            manager?.notify("multiple_alarms".hashCode(), notification)
-        }
     }
 
     private var volumeEscalationRunnable: Runnable? = null
@@ -709,5 +681,36 @@ class GeofenceMonitorService : Service() {
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
+    }
+
+    companion object {
+        // Stateless helpers — callable without a service instance
+        fun checkPointInGeofence(point: LatLng, geofence: GeofenceArea): Boolean {
+            return if (geofence.typeId == 1) {
+                val results = FloatArray(1)
+                Location.distanceBetween(
+                    geofence.center.latitude, geofence.center.longitude,
+                    point.latitude, point.longitude, results
+                )
+                results[0] <= geofence.radius
+            } else {
+                checkPointInPolygon(point, geofence.points)
+            }
+        }
+
+        fun checkPointInPolygon(point: LatLng, polygon: List<LatLng>): Boolean {
+            if (polygon.size < 3) return false
+            var intersectCount = 0
+            for (i in polygon.indices) {
+                val p1 = polygon[i]
+                val p2 = polygon[(i + 1) % polygon.size]
+                if (((p1.latitude > point.latitude) != (p2.latitude > point.latitude)) &&
+                    (point.longitude < (p2.longitude - p1.longitude) *
+                            (point.latitude - p1.latitude) /
+                            (p2.latitude - p1.latitude) + p1.longitude)
+                ) intersectCount++
+            }
+            return intersectCount % 2 != 0
+        }
     }
 }

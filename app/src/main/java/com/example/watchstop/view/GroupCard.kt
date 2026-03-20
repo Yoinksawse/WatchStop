@@ -1,8 +1,10 @@
 package com.example.watchstop.view
 
 import android.content.Intent
+import android.location.Location
 import android.os.Build
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
@@ -42,11 +44,14 @@ import com.example.watchstop.model.GroupEntry
 import com.example.watchstop.model.GroupRole
 import com.example.watchstop.model.TripStatus
 import com.example.watchstop.data.FirebaseRepository
+import com.example.watchstop.service.GeofenceMonitorService
 import com.example.watchstop.view.screens.ADMIN_ROLE_COLOUR
 import com.example.watchstop.view.screens.MEMBER_ROLE_COLOUR
 import com.example.watchstop.view.screens.NICEGREEN_COLOUR
 import com.example.watchstop.view.screens.SUPERADMIN_ROLE_COLOUR
 import com.example.watchstop.view.ui.theme.WatchStopTheme
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.maps.model.LatLng
 import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter
 
@@ -490,16 +495,75 @@ fun GroupCard(
                                 TripStatus.ARRIVED -> "End Trip"
                             },
                             onClick = {
-                                val next = when (currentStatus) {
-                                    TripStatus.INACTIVE -> TripStatus.TRAVELLING
-                                    TripStatus.TRAVELLING -> TripStatus.ARRIVED
-                                    TripStatus.ARRIVED -> TripStatus.INACTIVE
-                                }
-                                coroutineScope.launch {
-                                    FirebaseRepository.setTripStatus(groupId, currentUid, next)
-                                    val updated = GroupEntry(group)
-                                    updated.setTripStatus(currentUid, next)
-                                    group = updated
+                                //If user try starting trip, check if they in geofence
+                                //if yes notify them else start trip
+                                if (currentStatus == TripStatus.INACTIVE) {
+                                    val geofence = group.geofence
+                                    if (geofence != null) {
+                                        val fusedClient = LocationServices.getFusedLocationProviderClient(context)
+                                        try {
+                                            fusedClient.lastLocation.addOnSuccessListener { location: Location? ->
+                                                if (location != null) {
+                                                    val userLatLng = LatLng(location.latitude, location.longitude)
+                                                    val isInsideGeofence = GeofenceMonitorService.checkPointInGeofence(userLatLng, geofence)
+                                                    if (isInsideGeofence) {
+                                                        Toast.makeText(
+                                                            context,
+                                                            "You're already at ${geofence.name.ifBlank { "the destination" }}!",
+                                                            Toast.LENGTH_LONG
+                                                        ).show()
+                                                    } else {
+                                                        coroutineScope.launch {
+                                                            FirebaseRepository.setTripStatus(groupId, currentUid, TripStatus.TRAVELLING)
+                                                            val updated = GroupEntry(group)
+                                                            updated.setTripStatus(currentUid, TripStatus.TRAVELLING)
+                                                            group = updated
+                                                        }
+                                                    }
+                                                } else {
+                                                    coroutineScope.launch {
+                                                        FirebaseRepository.setTripStatus(groupId, currentUid, TripStatus.TRAVELLING)
+                                                        val updated = GroupEntry(group)
+                                                        updated.setTripStatus(currentUid, TripStatus.TRAVELLING)
+                                                        group = updated
+                                                    }
+                                                }
+                                            }.addOnFailureListener {
+                                                coroutineScope.launch {
+                                                    FirebaseRepository.setTripStatus(groupId, currentUid, TripStatus.TRAVELLING)
+                                                    val updated = GroupEntry(group)
+                                                    updated.setTripStatus(currentUid, TripStatus.TRAVELLING)
+                                                    group = updated
+                                                }
+                                            }
+                                        } catch (e: SecurityException) {
+                                            coroutineScope.launch {
+                                                FirebaseRepository.setTripStatus(groupId, currentUid, TripStatus.TRAVELLING)
+                                                val updated = GroupEntry(group)
+                                                updated.setTripStatus(currentUid, TripStatus.TRAVELLING)
+                                                group = updated
+                                            }
+                                        }
+                                    } else {
+                                        coroutineScope.launch {
+                                            FirebaseRepository.setTripStatus(groupId, currentUid, TripStatus.TRAVELLING)
+                                            val updated = GroupEntry(group)
+                                            updated.setTripStatus(currentUid, TripStatus.TRAVELLING)
+                                            group = updated
+                                        }
+                                    }
+                                } else {
+                                    val next = when (currentStatus) {
+                                        TripStatus.TRAVELLING -> TripStatus.ARRIVED
+                                        TripStatus.ARRIVED -> TripStatus.INACTIVE
+                                        else -> TripStatus.TRAVELLING
+                                    }
+                                    coroutineScope.launch {
+                                        FirebaseRepository.setTripStatus(groupId, currentUid, next)
+                                        val updated = GroupEntry(group)
+                                        updated.setTripStatus(currentUid, next)
+                                        group = updated
+                                    }
                                 }
                             }
                         )
