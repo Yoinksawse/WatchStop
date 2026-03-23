@@ -48,8 +48,11 @@ class GeofenceMonitorService : Service() {
     private val ALARM_CHANNEL_ID = "GeofenceAlarmChannel"
     private val ARRIVAL_NOTIFICATION_CHANNEL_ID = "GeofenceArrivalChannel"
 
+    @Volatile
     private var liveAlarms: List<GeoAlarm> = emptyList()
     private val activeAlarms = mutableSetOf<String>()
+    private val recentlyStoppedAlarms = mutableSetOf<String>()
+
 
     // Track which members have already triggered arrival notifications per group geofence
     private val arrivedMembers = mutableMapOf<String, MutableSet<String>>() // groupId -> Set<memberId>
@@ -59,6 +62,9 @@ class GeofenceMonitorService : Service() {
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate() {
         super.onCreate()
+        createNotificationChannels()
+        startForeground(NOTIFICATION_ID, createPersistentNotification())
+
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
@@ -66,8 +72,6 @@ class GeofenceMonitorService : Service() {
             @Suppress("DEPRECATION")
             getSystemService(VIBRATOR_SERVICE) as Vibrator
         }
-        createNotificationChannels()
-        startForeground(NOTIFICATION_ID, createPersistentNotification())
         subscribeToAlarms()
         startLocationUpdates()
     }
@@ -75,7 +79,7 @@ class GeofenceMonitorService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         fusedLocationClient.removeLocationUpdates(locationCallback)
-        mediaPlayer?.release()
+        stopMediaPlayerSafely()
         vibrator?.cancel()
         volumeEscalationRunnable?.let { handler.removeCallbacks(it) }
         serviceScope.cancel()
@@ -132,12 +136,23 @@ class GeofenceMonitorService : Service() {
 
     @RequiresApi(Build.VERSION_CODES.O)
     private fun checkGeofences(location: Location) {
+        Log.d("GeofenceService", "checkGeofences called. liveAlarms=${liveAlarms.size}, activeAlarms=$activeAlarms")
+        if (liveAlarms.isEmpty()) {
+            Log.w("GeofenceService", "liveAlarms is empty — alarms not yet loaded from Firebase")
+            return
+        }
+
         val userLatLng = LatLng(location.latitude, location.longitude)
         val now = LocalDateTime.now()
         val currentTime = LocalTime.now()
 
         liveAlarms.forEach { alarm ->
-            if (!alarm.active) return@forEach
+            Log.d("GeofenceService", "Checking alarm: ${alarm.id} name=${alarm.name} active=${alarm.active}")
+            if (!alarm.active) {
+                Log.d("GeofenceService", "Skipping alarm ${alarm.name} — not active")
+
+                return@forEach
+            }
             if (alarm.startTime != null && alarm.endTime != null) {
                 if (currentTime.isBefore(alarm.startTime) || currentTime.isAfter(alarm.endTime))
                     return@forEach
@@ -145,14 +160,26 @@ class GeofenceMonitorService : Service() {
             if (alarm.specificDate != null && alarm.specificDate != now.toLocalDate()) return@forEach
             if (alarm.dayOfWeek != null && alarm.dayOfWeek != now.dayOfWeek) return@forEach
 
-            val geofence = alarm.getGeofence() ?: return@forEach
+            val geofence = alarm.getGeofence()
+            if (geofence == null) {
+                Log.w("GeofenceService", "Alarm ${alarm.name} has null geofence")
+                return@forEach
+            }
+
             val isInside = isPointInGeofence(userLatLng, geofence)
+            Log.d("GeofenceService", "Alarm ${alarm.name}: isInside=$isInside, alreadyActive=${activeAlarms.contains(alarm.id)}")
 
             if (isInside && !activeAlarms.contains(alarm.id)) {
+                if (alarm.id in recentlyStoppedAlarms) {
+                    Log.d("GeofenceService", "Skipping alarm ${alarm.name} — recently stopped, waiting for Firebase confirmation")
+                    return@forEach
+                }
                 activeAlarms.add(alarm.id)
                 triggerGeoAlarm(alarm)
             } else if (!isInside && activeAlarms.contains(alarm.id)) {
                 activeAlarms.remove(alarm.id)
+                // Also remove from recently stopped if user has left the geofence
+                recentlyStoppedAlarms.remove(alarm.id)
                 stopAlarmIfNoneActive()
             }
         }
@@ -475,9 +502,8 @@ class GeofenceMonitorService : Service() {
 
     private fun stopAlarmIfNoneActive() {
         if (activeAlarms.isEmpty()) {
-            mediaPlayer?.stop()
-            mediaPlayer?.release()
-            mediaPlayer = null
+            stopMediaPlayerSafely()
+
             vibrator?.cancel()
             volumeEscalationRunnable?.let { handler.removeCallbacks(it) }
 
@@ -494,56 +520,63 @@ class GeofenceMonitorService : Service() {
     }
 
     private fun forceStopAlarm() {
-        // Stop audio and vibration
-        mediaPlayer?.stop()
-        mediaPlayer?.release()
-        mediaPlayer = null
+        stopMediaPlayerSafely()
         vibrator?.cancel()
         volumeEscalationRunnable?.let { handler.removeCallbacks(it) }
+        volumeEscalationRunnable = null
 
-        // Get the current active alarms before clearing
         val alarmsToDeactivate = activeAlarms.toList()
 
-        // Deactivate them in Firebase if user is logged in
-        val uid = FirebaseRepository.currentUid
-        if (uid != null && alarmsToDeactivate.isNotEmpty()) {
-            FirebaseRepository.deactivateGeoAlarms(
-                database = FirebaseDatabase.getInstance().reference,
-                uid = uid,
-                alarmIds = alarmsToDeactivate,
-                onComplete = { success, error ->
-                    if (success) {
-                        Log.d("GeofenceService", "Successfully deactivated ${alarmsToDeactivate.size} alarms")
+        // Track recently stopped alarms to prevent re-triggering
+        recentlyStoppedAlarms.addAll(alarmsToDeactivate)
 
-                        // Update local liveAlarms list
-                        serviceScope.launch {
-                            liveAlarms = liveAlarms.map { alarm ->
-                                if (!alarmsToDeactivate.contains(alarm.id)) alarm
-                                else alarm.copy(active = false)
-                            }
-                        }
-
-                        // Cancel all notifications
-                        val manager = getSystemService(NotificationManager::class.java)
-                        alarmsToDeactivate.forEach { alarmId ->
-                            manager?.cancel("alarm_$alarmId".hashCode())
-                        }
-                        manager?.cancel("multiple_alarms_summary".hashCode())
-
-                    } else {
-                        Log.e("GeofenceService", "Failed to deactivate alarms: $error")
-                    }
-                }
-            )
-        } else {
-            //just cancel notifications if no Firebase update needed
-            val manager = getSystemService(NotificationManager::class.java)
-            activeAlarms.forEach { alarmId ->
-                manager?.cancel("alarm_$alarmId".hashCode())
-            }
-            manager?.cancel("multiple_alarms_summary".hashCode())
-        }
         activeAlarms.clear()
+
+        val manager = getSystemService(NotificationManager::class.java)
+
+        if (alarmsToDeactivate.isEmpty()) {
+            manager?.cancelAll()
+            return
+        }
+
+        alarmsToDeactivate.forEach { alarmId ->
+            manager?.cancel("alarm_$alarmId".hashCode())
+        }
+        manager?.cancel("multiple_alarms_summary".hashCode())
+
+        liveAlarms = liveAlarms.map { alarm ->
+            if (alarm.id in alarmsToDeactivate) alarm.copy(active = false)
+            else alarm
+        }
+
+        val uid = FirebaseRepository.currentUid ?: return
+        FirebaseRepository.deactivateGeoAlarms(
+            database = FirebaseDatabase.getInstance().reference,
+            uid = uid,
+            alarmIds = alarmsToDeactivate,
+            onComplete = { success, error ->
+                if (success) {
+                    // Only clear the cooldown once Firebase confirms deactivation
+                    recentlyStoppedAlarms.removeAll(alarmsToDeactivate.toSet())
+                } else {
+                    Log.e("GeofenceService", "Failed to deactivate alarms in Firebase: $error")
+                }
+            }
+        )
+    }
+
+    private fun stopMediaPlayerSafely() {
+        try {
+            mediaPlayer?.let {
+                if (it.isPlaying) it.stop()
+                it.reset()
+                it.release()
+            }
+        } catch (e: IllegalStateException) {
+            Log.e("GeofenceService", "MediaPlayer in bad state during stop", e)
+        } finally {
+            mediaPlayer = null
+        }
     }
 
     // ── Notifications ─────────────────────────────────────────────────────
