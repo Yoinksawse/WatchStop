@@ -38,6 +38,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.watchstop.activities.X
+import com.example.watchstop.algo.calculateArea
+import com.example.watchstop.algo.calculatePerimeter
+import com.example.watchstop.algo.findMEC
+import com.example.watchstop.algo.polygonSelfIntersects
 import com.example.watchstop.data.UserGeofencesDatabase
 import com.example.watchstop.data.UserProfileObject
 import com.example.watchstop.model.GeofenceArea
@@ -429,9 +433,26 @@ fun MyGoogleMap() {
                             onDragEnd = {
                                 if (currentDrawingPoints.size > 2) {
                                     val points = currentDrawingPoints
+
+                                    //lines intersect: OOPS
+                                    if (polygonSelfIntersects(points)) {
+                                        failingPolygon = points
+                                        Toast.makeText(context, "Lines cannot cross each other!", Toast.LENGTH_SHORT).show()
+                                        scope.launch {
+                                            failingAlpha.snapTo(1f)
+                                            failingAlpha.animateTo(0f, tween(2000))
+                                            failingPolygon = null
+                                        }
+                                        currentDrawingPoints = emptyList()
+                                        interactionMode = MapInteractionMode.NONE
+                                        snackbarHostState.currentSnackbarData?.dismiss()
+                                        return@detectDragGestures
+                                    }
+
                                     val area = calculateArea(points + points.first())
                                     val perimeter = calculatePerimeter(points + points.first())
 
+                                    //too thin: OOPS
                                     if (area < (perimeter * perimeter) / 100.0) {
                                         failingPolygon = points
                                         Toast.makeText(context, "Shape is too thin!", Toast.LENGTH_SHORT).show()
@@ -440,7 +461,9 @@ fun MyGoogleMap() {
                                             failingAlpha.animateTo(0f, tween(2000))
                                             failingPolygon = null
                                         }
-                                    } else {
+                                    }
+                                    //good polygon
+                                    else {
                                         val projection = cameraPositionState.projection
                                         val latLngs = points.mapNotNull { offset -> projection?.fromScreenLocation(Point(offset.x.toInt(), offset.y.toInt())) }
                                         if (latLngs.isNotEmpty()) {
@@ -673,52 +696,4 @@ fun MyGoogleMap() {
             }
         }
     }
-}
-
-// Geometry helpers
-fun calculateArea(points: List<Offset>): Double {
-    var area = 0.0
-    for (i in 0 until points.size - 1) {
-        area += (points[i].x * points[i+1].y - points[i+1].x * points[i].y)
-    }
-    return abs(area) / 2.0
-}
-
-fun calculatePerimeter(points: List<Offset>): Double {
-    var perimeter = 0.0
-    for (i in 0 until points.size - 1) {
-        val dx = points[i].x - points[i+1].x
-        val dy = points[i].y - points[i+1].y
-        perimeter += sqrt((dx * dx + dy * dy).toDouble())
-    }
-    return perimeter
-}
-
-fun findMEC(latLngs: List<LatLng>): Pair<LatLng, Double> {
-    if (latLngs.isEmpty()) return LatLng(0.0, 0.0) to 0.0
-    if (latLngs.size == 1) return LatLng(0.0, 0.0) to 0.0
-
-    var p = latLngs[0]
-    var q = latLngs.maxBy { dist(p, it) }!!
-    var r = latLngs.maxBy { dist(q, it) }!!
-
-    var center = LatLng((q.latitude + r.latitude) / 2.0, (q.longitude + r.longitude) / 2.0)
-    var radius = dist(q, r) / 2.0
-
-    for (s in latLngs) {
-        val d = dist(center, s)
-        if (d > radius) {
-            val newRadius = (radius + d) / 2.0
-            val ratio = (d - radius) / (2.0 * d)
-            center = LatLng(center.latitude + (s.latitude - center.latitude) * ratio, center.longitude + (s.longitude - center.longitude) * ratio)
-            radius = newRadius
-        }
-    }
-    return center to radius
-}
-
-fun dist(p1: LatLng, p2: LatLng): Double {
-    val results = FloatArray(1)
-    android.location.Location.distanceBetween(p1.latitude, p1.longitude, p2.latitude, p2.longitude, results)
-    return results[0].toDouble()
 }

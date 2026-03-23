@@ -14,6 +14,8 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import com.example.watchstop.activities.MainActivity
+import com.example.watchstop.algo.checkPointInCircle
+import com.example.watchstop.algo.checkPointInPolygon
 import com.example.watchstop.data.FirebaseRepository
 import com.example.watchstop.model.GeoAlarm
 import com.example.watchstop.model.GeofenceArea
@@ -166,7 +168,7 @@ class GeofenceMonitorService : Service() {
                 return@forEach
             }
 
-            val isInside = isPointInGeofence(userLatLng, geofence)
+            val isInside = checkPointInGeofence(userLatLng, geofence)
             Log.d("GeofenceService", "Alarm ${alarm.name}: isInside=$isInside, alreadyActive=${activeAlarms.contains(alarm.id)}")
 
             if (isInside && !activeAlarms.contains(alarm.id)) {
@@ -208,7 +210,7 @@ class GeofenceMonitorService : Service() {
                             .addOnSuccessListener { groupSnap ->
                                 val geofence = parseGeofenceFromSnapshot(groupSnap) ?: return@addOnSuccessListener
                                 val arrivedSet = arrivedMembers.getOrPut(groupId) { mutableSetOf() }
-                                val isInside = isPointInGeofence(userLatLng, geofence)
+                                val isInside = checkPointInGeofence(userLatLng, geofence)
 
                                 when {
                                     isInside && uid !in arrivedSet -> {
@@ -350,9 +352,6 @@ class GeofenceMonitorService : Service() {
                 }
             }
     }
-
-    fun isPointInGeofence(point: LatLng, geofence: GeofenceArea) =
-        checkPointInGeofence(point, geofence)
 
     // ── Alarm Audio / Vibration ───────────────────────────────────────────
 
@@ -613,31 +612,10 @@ class GeofenceMonitorService : Service() {
     }
 
     companion object {
-        //stateless helpers: callable without instantiating the service
+        //put here so other logic can also use
         fun checkPointInGeofence(point: LatLng, geofence: GeofenceArea): Boolean {
-            return if (geofence.typeId == 1) {
-                val results = FloatArray(1)
-                Location.distanceBetween(
-                    geofence.center.latitude, geofence.center.longitude,
-                    point.latitude, point.longitude, results
-                )
-                results[0] <= geofence.radius
-            } else checkPointInPolygon(point, geofence.points)
-        }
-
-        fun checkPointInPolygon(point: LatLng, polygon: List<LatLng>): Boolean {
-            if (polygon.size < 3) return false
-            var intersectCount = 0
-            for (i in polygon.indices) {
-                val p1 = polygon[i]
-                val p2 = polygon[(i + 1) % polygon.size]
-                if (((p1.latitude > point.latitude) != (p2.latitude > point.latitude)) &&
-                    (point.longitude < (p2.longitude - p1.longitude) *
-                            (point.latitude - p1.latitude) /
-                            (p2.latitude - p1.latitude) + p1.longitude)
-                ) intersectCount++
-            }
-            return intersectCount % 2 != 0
+            return if (geofence.typeId == 1) checkPointInCircle(point, geofence)
+            else checkPointInPolygon(point, geofence.points)
         }
     }
 }
