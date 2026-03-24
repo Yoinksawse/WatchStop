@@ -211,14 +211,8 @@ fun GroupCard(
                     // Leave / Disband Actions (only visible when expanded)
                     if (isExpanded) {
                         Spacer(modifier = Modifier.width(8.dp))
-                        
-                        val canLeave = when {
-                            isSuperAdmin -> false
-                            isAdmin -> hasSuperAdmin
-                            else -> true
-                        }
 
-                        if (isSuperAdmin) {
+                        if (isSuperAdmin || isAdmin) {
                             Text(
                                 text = "Disband",
                                 color = destructiveColor,
@@ -230,7 +224,7 @@ fun GroupCard(
                                     }
                                 }
                             )
-                        } else if (canLeave) {
+                        } else {
                             Text(
                                 text = "Leave",
                                 color = destructiveColor,

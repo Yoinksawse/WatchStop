@@ -541,7 +541,6 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                             }
                         }
                     }
-                    HorizontalDivider()
                 }
 
                 // ── Pending Admin Applications ─────────────────────────────────
@@ -566,7 +565,6 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                     var appName by remember(applicant) { mutableStateOf(applicant) }
                                     LaunchedEffect(applicant) { appName = FirebaseRepository.getUsername(applicant) }
                                     Text(appName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp * X.value)
-                                    Text("${votes.size}/$needed approvals needed", fontSize = 11.sp * X.value, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 TextButton(
                                     onClick = {
