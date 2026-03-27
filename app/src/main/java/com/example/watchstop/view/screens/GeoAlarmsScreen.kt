@@ -48,6 +48,8 @@ import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.launch
 import java.time.*
 import java.time.format.DateTimeFormatter
+import com.example.watchstop.view.DatePickerDialog
+import com.example.watchstop.view.TimePickerDialog
 
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
@@ -808,80 +810,6 @@ fun EditGeoAlarmDialog(
             outlineColor = outlineColor
         )
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun TimePickerDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (Int, Int) -> Unit,
-    initialHour: Int,
-    initialMinute: Int,
-    outlineColor: Color
-) {
-    val state = rememberTimePickerState(
-        initialHour = initialHour,
-        initialMinute = initialMinute,
-        is24Hour = false
-    )
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Select Time",
-            fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value) },
-        text = { TimePicker(state = state) },
-        confirmButton = {
-            TextButton(
-                onClick = { onConfirm(state.hour, state.minute) },
-                colors = ButtonDefaults.textButtonColors(contentColor = outlineColor)
-            ) {
-                Text("OK", fontSize = 14.sp * X.value)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", fontSize = 14.sp * X.value)
-            }
-        }
-    )
-}
-
-@RequiresApi(Build.VERSION_CODES.O)
-@Composable
-fun DatePickerDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (LocalDate) -> Unit,
-    initialDate: LocalDate,
-    outlineColor: Color
-) {
-    val datePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = initialDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-    )
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Select Date",
-            fontSize = MaterialTheme.typography.titleLarge.fontSize * X.value) },
-        text = { DatePicker(state = datePickerState) },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    datePickerState.selectedDateMillis?.let { millis ->
-                        val date = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()
-                        onConfirm(date)
-                    }
-                },
-                colors = ButtonDefaults.textButtonColors(contentColor = outlineColor)
-            ) {
-                Text("OK", fontSize = 14.sp * X.value)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", fontSize = 14.sp * X.value)
-            }
-        }
-    )
 }
 
 @RequiresApi(Build.VERSION_CODES.O)
