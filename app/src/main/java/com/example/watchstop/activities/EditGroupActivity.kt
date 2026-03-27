@@ -233,7 +233,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
             ) {
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // ── Edit Group Info Button ─────────────────────────────────────
+                // ==================== Edit Group Info Button =================
                 Button(
                     onClick = { showInfoDialog = true },
                     modifier = Modifier.fillMaxWidth(),
@@ -249,7 +249,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
 
                 HorizontalDivider()
 
-                // ── Add Member (Invite) ────────────────────────────────────────
+                // ==================== Add Member (Invite) ====================
                 if (currentIsAdmin) {
                     Text("Invite Member", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
                         fontSize = MaterialTheme.typography.titleMedium.fontSize * X.value)
@@ -337,7 +337,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                     HorizontalDivider()
                 }
 
-                // ── Members Section ────────────────────────────────────────────
+                // ====================== Members Section ======================
                 Text("Members", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
                     fontSize = MaterialTheme.typography.titleMedium.fontSize * X.value)
                 memberNames.forEach { member ->
@@ -478,7 +478,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                     }
                 }
 
-                // ── Pending Removals ───────────────────────────────────────────
+                // ===================== Pending Removals ======================
                 if (explicitlyRemovedMembers.value.isNotEmpty()) {
                     HorizontalDivider()
                     Text(
@@ -543,7 +543,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                     }
                 }
 
-                // ── Pending Admin Applications ─────────────────────────────────
+                // ================= Pending Admin Applications ================
                 if (currentIsAdmin && adminApplications.isNotEmpty()) {
                     HorizontalDivider()
                     Text("Pending Admin Applications", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
@@ -586,7 +586,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                     Text("Approve", color = successColor,
                                         fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                                 }
-                                // FIX: Deny now calls FirebaseRepository.declineAdminApplication
+                                // Deny now calls FirebaseRepository.declineAdminApplication
                                 // (which uses groupRef with relative paths — admin safe).
                                 TextButton(
                                     onClick = {
@@ -610,7 +610,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                     }
                 }
 
-                // ── Pending Invitations Section ────────────────────────────────
+                // ================= Pending Invitations Section ===============
                 if (pendingInvitations.isNotEmpty()) {
                     HorizontalDivider()
                     Text("Pending Invitations", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
@@ -735,7 +735,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
             }
         }
 
-        // ── Group Info Dialog ──────────────────────────────────────────
+        // ==================== Group Info Dialog ======================
         if (showInfoDialog) {
             val focusManager = LocalFocusManager.current
             val context = LocalContext.current

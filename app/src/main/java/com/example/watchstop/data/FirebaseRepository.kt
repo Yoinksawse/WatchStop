@@ -44,7 +44,7 @@ object FirebaseRepository {
     private fun ensureAuth(): String =
         currentUid ?: throw IllegalStateException("Not authenticated")
 
-    // ── Auth ──────────────────────────────────────────────────────────────
+    // ============================= Auth =================================
 
     suspend fun signIn(email: String, password: String): FirebaseUser {
         val result = auth.signInWithEmailAndPassword(email, password).await()
@@ -71,7 +71,7 @@ object FirebaseRepository {
 
     fun signOut() = auth.signOut()
 
-    // ── User Profile ──────────────────────────────────────────────────────
+    // User Profile ======================================================
 
     suspend fun fetchUserProfile(uid: String): UserProfileData? =
         db.child("users").child(uid).get().await().toUserProfileData()
@@ -100,7 +100,7 @@ object FirebaseRepository {
     suspend fun getUsername(uid: String): String =
         db.child("uids").child(uid).get().await().getValue(String::class.java) ?: "Unknown"
 
-    // ── Groups ────────────────────────────────────────────────────────────
+    // Groups ============================================================
 
     /**
      * Save a NEW group only. groupId must be null — Firebase generates the key.
@@ -200,7 +200,7 @@ object FirebaseRepository {
                 .mapValues { it.value.associateWith { true } },
             "votesToRemoveAdmin" to group.votesToRemoveAdmin
                 .mapValues { it.value.associateWith { true } },
-            // FIX: keep memberCount in sync whenever metadata is saved
+            // keep memberCount in sync whenever metadata is saved
             "memberCount"           to group.groupMemberNames.size,
             "geofence" to group.geofence?.let { gf ->
                 mapOf(
@@ -255,12 +255,10 @@ object FirebaseRepository {
     }
 
     /**
-     * Admin declines a member's admin application — removes it without promoting.
-     *
-     * FIX: uses groupRef.updateChildren with RELATIVE paths instead of db.updateChildren
+     * uses groupRef.updateChildren with RELATIVE paths instead of db.updateChildren
      * with full absolute paths. When db.updateChildren is called with paths like
      * "groups/$groupId/adminApplications/...", Firebase evaluates the root ".write" rule
-     * against data at "/", where data.child('memberRoles') is null — causing permission
+     * against data at "/", where data.child('memberRoles') is null, so causing permission
      * denied even for group admins. Using groupRef scopes the rule evaluation to the
      * group node where memberRoles actually exists.
      */
@@ -460,7 +458,7 @@ object FirebaseRepository {
         awaitClose { ref.removeEventListener(listener) }
     }
 
-    // ── Notifications ─────────────────────────────────────────────────────
+    // Notifications =====================================================
 
     private fun observeUserNotifications(uid: String): Flow<List<NotificationItem>> = callbackFlow {
         if (uid.isEmpty()) { trySend(emptyList()); awaitClose {}; return@callbackFlow }
@@ -528,7 +526,7 @@ object FirebaseRepository {
         }
     }
 
-    // ── Group Actions ─────────────────────────────────────────────────────
+    // Group Actions =====================================================
 
     suspend fun inviteToGroup(groupId: String, targetUid: String) {
         ensureAuth()
@@ -557,7 +555,7 @@ object FirebaseRepository {
         )
         db.updateChildren(updates).await()
 
-        // FIX: increment memberCount AFTER the member is in memberIds
+        // increment memberCount AFTER the member is in memberIds
         // (rule allows writes from current members and pending-invitation holders)
         db.child("groups").child(groupId).child("memberCount")
             .incrementInt()  // uses the transaction helper above
@@ -660,7 +658,7 @@ object FirebaseRepository {
         if (entry.isSuperAdmin(targetUid))
             throw IllegalStateException("Cannot vote to remove a Super Admin")
 
-        // ── SuperAdmin path: immediate demotion ───────────────────────────────
+        // SuperAdmin path: immediate demotion ===============================
         if (entry.isSuperAdmin(voterUid)) {
             val updates = mapOf<String, Any?>(
                 "memberRoles/$targetUid"               to GroupRole.MEMBER.name,
@@ -691,7 +689,7 @@ object FirebaseRepository {
             return true
         }
 
-        // ── Regular-member path ───────────────────────────────────────────────
+        // Regular-member path ===============================================
 
         // Step 1 — Cast vote once (rule enforces !data.exists() → safe from double-vote)
         try {
@@ -796,7 +794,7 @@ object FirebaseRepository {
         db.child("groupLocations").child(groupId).child(targetUid).removeValue().await()
         db.child("users").child(targetUid).child("groups").child(groupId).removeValue().await()
 
-        // FIX: decrement memberCount
+        // decrement memberCount
         val currentCount = groupRef.child("memberCount").get().await()
             .getValue(Int::class.java) ?: entry.groupMemberNames.size
         groupRef.child("memberCount").setValue(maxOf(0, currentCount - 1)).await()
@@ -909,7 +907,7 @@ object FirebaseRepository {
         }
     }
 
-    // ── Live Location ─────────────────────────────────────────────────────
+    // Live Location =====================================================
 
     fun pushLocation(groupId: String, uid: String, lat: Double, lng: Double) {
         if (isGuest()) return
@@ -938,7 +936,7 @@ object FirebaseRepository {
         awaitClose { ref.removeEventListener(listener) }
     }
 
-    // ── Geo Alarms ────────────────────────────────────────────────────────
+    // Geo Alarms ========================================================
 
     fun observeGeoAlarms(uid: String): Flow<List<GeoAlarm>> = callbackFlow {
         if (uid.isEmpty()) { trySend(emptyList()); close(); return@callbackFlow }
@@ -986,28 +984,24 @@ object FirebaseRepository {
             }
     }
 
-    /**
-     * Save a geoalarm with proper geofence linking
-     */
+    //save a geoalarm + geofence linking
     suspend fun saveGeoAlarm(uid: String, alarm: GeoAlarm) {
-        // First, if this alarm is linked to a geofence, update that geofence
+        //if this alarm is linked to a geofence, update that geofence
         alarm.geofenceId?.let { geofenceId ->
-            // Get the geofence to update it with this alarm ID
             val geofenceSnapshot = db.child("geofences").child(uid).child(geofenceId).get().await()
             geofenceSnapshot.toGeofenceArea()?.let { geofence ->
-                // Update the geofence with this alarm ID
                 val updatedGeofence = geofence.copy(geoAlarmId = alarm.id)
                 saveGeofence(uid, updatedGeofence)
             }
         }
 
-        // Then save the alarm
+        //save alarm
         val alarmData = mapOf(
             "id" to alarm.id,
             "name" to alarm.name,
             "active" to alarm.active,
             "description" to alarm.description,
-            "geofenceId" to alarm.geofenceId,  // Link to geofence
+            "geofenceId" to alarm.geofenceId,
             "specificDate" to alarm.specificDate?.toString(),
             "dayOfWeek" to alarm.dayOfWeek?.name,
             "startTime" to alarm.startTime?.toString(),
@@ -1017,42 +1011,26 @@ object FirebaseRepository {
         db.child("geoAlarms").child(uid).child(alarm.id).setValue(alarmData).await()
     }
 
-    /**
-     * Delete a geoalarm and unlink it from its geofence
-     */
+
+    //delete a geoalarm and unlink it from its geofence
     suspend fun deleteGeoAlarm(uid: String, alarmId: String) {
-        // First, find and update any geofence linked to this alarm
+        //find and update any geofence linked to this alarm
         val geofencesSnapshot = db.child("geofences").child(uid).get().await()
         geofencesSnapshot.children.forEach { child ->
             child.toGeofenceArea()?.let { geofence ->
                 if (geofence.geoAlarmId == alarmId) {
-                    // Remove the link
+                    //remove link
                     val updatedGeofence = geofence.copy(geoAlarmId = null)
                     saveGeofence(uid, updatedGeofence)
                 }
             }
         }
 
-        // Then delete the alarm
+        //delete entry from database
         db.child("geoAlarms").child(uid).child(alarmId).removeValue().await()
     }
 
-    // ── User Geofences ────────────────────────────────────────────────────
-
-    fun observeUserGeofences(uid: String): Flow<List<DataSnapshot>> = callbackFlow {
-        if (uid.isEmpty()) { trySend(emptyList()); close(); return@callbackFlow }
-        val ref = db.child("geofences").child(uid)
-        val listener = ref.addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                trySend(snapshot.children.toList())
-            }
-            override fun onCancelled(error: DatabaseError) {
-                Log.w("FirebaseRepository", "observeUserGeofences cancelled: ${error.message}")
-                trySend(emptyList())
-            }
-        })
-        awaitClose { ref.removeEventListener(listener) }
-    }
+    // User Geofences ====================================================
 
     /**
      * Save a geofence with proper type handling
@@ -1084,9 +1062,6 @@ object FirebaseRepository {
         db.child("geofences").child(uid).setValue(data).await()
     }
 
-    /**
-     * Save a geofence to Firebase
-     */
     fun saveGeofenceToFirebase(
         database: DatabaseReference,
         geofence: GeofenceArea,
@@ -1163,7 +1138,7 @@ object FirebaseRepository {
             }
     }
 
-    // ── Group Geofence ─────────────────────────────────────────────────────
+    // Group Geofence =====================================================
 
     /**
      * Set or update the group's geofence. Creates an independent copy so members
@@ -1212,7 +1187,7 @@ object FirebaseRepository {
 }
 
 
-// ── Notification Item Sealed Class ───────────────────────────────────────────
+// Notification Item Sealed Class ===========================================
 
 sealed class NotificationItem {
     data class Invitation(val groupId: String, val groupTitle: String) : NotificationItem()
@@ -1222,11 +1197,11 @@ sealed class NotificationItem {
     data class Demoted(val groupId: String, val groupTitle: String, val demotedByName: String, val notificationId: String) : NotificationItem()
 }
 
-// ── Data classes ──────────────────────────────────────────────────────────────
+// Data classes ==============================================================
 
 data class LatLngSnapshot(val lat: Double, val lng: Double)
 
-// ── Snapshot extension helpers ────────────────────────────────────────────────
+// Snapshot extension helpers ================================================
 
 private fun DataSnapshot.toUserProfileData(): UserProfileData? {
     val userName = child("userName").getValue(String::class.java) ?: return null

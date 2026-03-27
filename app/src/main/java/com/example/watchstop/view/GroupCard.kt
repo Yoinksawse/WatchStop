@@ -135,7 +135,7 @@ fun GroupCard(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
 
-                // ── Title / Toggle Row ──────────────────────────────────────
+                // ================== Title / Toggle Row ====================
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -240,9 +240,8 @@ fun GroupCard(
                     }
                 }
 
-                // ── Detailed Content (only visible when expanded) ───────────
-                if (isExpanded) {
-                    // ── Date / Time Section ─────────────────────────────────────
+                if (isExpanded) { //Detailed cotent
+                    // ===================Date / Time Section ==================
                     MiniHeader("Event date & Time", secondaryText)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         SketchTag(group.eventDateTime.format(
@@ -252,7 +251,7 @@ fun GroupCard(
                     }
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // ── Geofence Name display ─────────────────────────────────────
+                    // ===================Geofence Name display ==================
                     MiniHeader("Geofence", secondaryText)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -271,7 +270,7 @@ fun GroupCard(
                     }
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // ── Description (Expandable) ────────────────────────────────
+                    // =============== Description (Expandable) =================
                     MiniHeader("Group/Event Description", secondaryText)
                     if (group.description.isNotBlank()) {
                         Box(
@@ -322,14 +321,14 @@ fun GroupCard(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // ── Member List with Status Dashboard ──────────────────────
+                    // =========== Member List with Status Dashboard ===========
                     MiniHeader("Members", secondaryText)
                     group.groupMemberNames.forEach { memberUid ->
                         val memberRole = group.memberRoles[memberUid] ?: GroupRole.MEMBER
                         val isSharing = group.locationSharingEnabled[memberUid] ?: false
                         val status = group.tripStatus[memberUid] ?: TripStatus.INACTIVE
 
-                        // Resolve UID → display name async
+                        // Resolve UID -> display name async
                         var displayName by remember(memberUid) { mutableStateOf(memberUid) }
                         LaunchedEffect(memberUid) {
                             displayName = FirebaseRepository.getUsername(memberUid)
@@ -491,7 +490,7 @@ fun GroupCard(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // ── Locations Section ───────────────────────────────────────
+                    // Locations Section =======================================
                     MiniHeader("Locations", secondaryText)
 
                     val isSharing = group.locationSharingEnabled[currentUid] ?: false
@@ -631,7 +630,7 @@ fun GroupCard(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // ── Management Section ──────────────────────────────────────
+                    // Management Section ======================================
                     MiniHeader("Management", secondaryText)
 
                     // Manage group (admins) or Apply for admin (members)
@@ -657,7 +656,7 @@ fun GroupCard(
                         )
                     }
 
-                    // ── My pending application banner ───────────────────────────
+                    // My pending application banner ===========================
                     if (group.adminApplications.contains(currentUid)) {
                         Spacer(modifier = Modifier.height(10.dp))
                         val voteCount = group.adminApplicationVoteCount(currentUid)
@@ -675,7 +674,7 @@ fun GroupCard(
                         }
                     }
 
-                    // ── Admin Removal Dialog ───────────────────────────────────────
+                    // Admin Removal Dialog =======================================
                     showRemovalDialogFor?.let { targetUid ->
                         val targetRole = group.memberRoles[targetUid] ?: GroupRole.MEMBER
                         val isTargetSuperAdmin = targetRole == GroupRole.SUPER_ADMIN
@@ -826,7 +825,7 @@ fun GroupCard(
                         )
                     }
 
-                    // ── Pending applications visible to admins ──────────────────
+                    // Pending applications visible to admins ==================
                     if (isAdmin) {
                         val pending = group.adminApplications.filter { it != currentUid }
                         if (pending.isNotEmpty()) {
@@ -889,7 +888,7 @@ fun GroupCard(
     }
 }
 
-// ── Shared small components ──────────────────────────────────────────────────
+// Shared small components ==================================================
 
 @Composable
 fun MiniHeader(text: String, color: Color) {

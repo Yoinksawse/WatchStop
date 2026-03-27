@@ -10,7 +10,7 @@ import kotlin.math.sqrt
 /**
  * Returns true if the closed polygon formed by [points] has any self-intersecting edges.
  *
- * The closing edge (last point → first point) is included in the check.
+ * The closing edge (last point -> first point) is included in the check.
  * Adjacent edges share a vertex by definition and are skipped so they never
  * produce a false positive.
  *
@@ -35,10 +35,7 @@ fun polygonSelfIntersects(points: List<Offset>): Boolean {
     return false
 }
 
-/**
- * Tests whether segment (p1→p2) and segment (p3→p4) intersect at a proper
- * interior point (endpoints touching is not counted as an intersection).
- */
+// Find presence of segment intersection points
 fun segmentsIntersect(p1: Offset, p2: Offset, p3: Offset, p4: Offset): Boolean {
     val d1x = p2.x - p1.x
     val d1y = p2.y - p1.y
@@ -46,12 +43,12 @@ fun segmentsIntersect(p1: Offset, p2: Offset, p3: Offset, p4: Offset): Boolean {
     val d2y = p4.y - p3.y
 
     val denom = d1x * d2y - d1y * d2x
-    if (denom == 0f) return false // parallel or collinear — treat as no crossing
+    if (denom == 0f) return false // parallel or collinear treat as no crossing
 
     val t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denom
     val u = ((p3.x - p1.x) * d1y - (p3.y - p1.y) * d1x) / denom
 
-    // Strict inequalities exclude endpoint touches (shared vertices between adjacent edges)
+    // Inequalities exclude endpoint touches (shared vertices between adjacent edges)
     return t > 0f && t < 1f && u > 0f && u < 1f
 }
 

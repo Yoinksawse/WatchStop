@@ -73,7 +73,7 @@ class LoginActivity : ComponentActivity() {
                         )
                     }
                 ){ innerPadding ->
-                    // ── OUTER WRAPPER TO CAPTURE TAPS ──────────────────────────
+                    // OUTER WRAPPER TO CAPTURE TAPS ==========================
                     Box(
                         modifier = Modifier
                             .fillMaxSize()

@@ -9,7 +9,9 @@ import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.*
+import android.provider.Settings
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
@@ -42,7 +44,11 @@ class GeofenceMonitorService : Service() {
     private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
     private val handler = Handler(Looper.getMainLooper())
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // var instead of val so it can be recreated after the OS kills the process and
+    // START_STICKY restarts the service — the old scope is cancelled on kill, which leaves
+    // liveAlarms empty and subscribeToAlarms() effectively dead forever.
+    private var serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     val MIN_LOCATION_UPDATE_TIME_INTERVAL: Long = 3_000
     private val NOTIFICATION_ID = 888
@@ -55,11 +61,46 @@ class GeofenceMonitorService : Service() {
     private val activeAlarms = mutableSetOf<String>()
     private val recentlyStoppedAlarms = mutableSetOf<String>()
 
-
     // Track which members have already triggered arrival notifications per group geofence
     private val arrivedMembers = mutableMapOf<String, MutableSet<String>>() // groupId -> Set<memberId>
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────
+    // Track liveness of the Firebase subscription and location updates so the watchdog
+    // and onStartCommand can detect and revive them after Doze, network drops, or OS restarts.
+    @Volatile private var isSubscribedToAlarms = false
+    @Volatile private var isLocationUpdatesStarted = false
+    private var alarmSubscriptionJob: Job? = null
+
+    // ============================== Watchdog ============================
+
+    /**
+     * Fires every 60 s. Revives the Firebase subscription or location updates if they
+     * have silently died due to Doze mode, a network drop, or a START_STICKY restart that
+     * skipped onCreate() and left the service in a half-initialised state.
+     */
+    private val watchdogRunnable = object : Runnable {
+        override fun run() {
+            Log.d("GeofenceService", "Watchdog tick — subscribed=$isSubscribedToAlarms, alarms=${liveAlarms.size}, location=$isLocationUpdatesStarted")
+
+            if (!serviceScope.isActive) {
+                Log.w("GeofenceService", "Watchdog: scope cancelled, recreating")
+                serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            }
+
+            if (!isSubscribedToAlarms || alarmSubscriptionJob?.isActive != true) {
+                Log.w("GeofenceService", "Watchdog: re-subscribing to alarms")
+                subscribeToAlarms()
+            }
+
+            if (!isLocationUpdatesStarted) {
+                Log.w("GeofenceService", "Watchdog: restarting location updates")
+                startLocationUpdates()
+            }
+
+            handler.postDelayed(this, WATCHDOG_INTERVAL_MS)
+        }
+    }
+
+    // Lifecycle =========================================================
 
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate() {
@@ -76,6 +117,9 @@ class GeofenceMonitorService : Service() {
         }
         subscribeToAlarms()
         startLocationUpdates()
+
+        // Start watchdog to guard against silent subscription/location death
+        handler.postDelayed(watchdogRunnable, WATCHDOG_INTERVAL_MS)
     }
 
     override fun onDestroy() {
@@ -84,6 +128,10 @@ class GeofenceMonitorService : Service() {
         stopMediaPlayerSafely()
         vibrator?.cancel()
         volumeEscalationRunnable?.let { handler.removeCallbacks(it) }
+        // Remove watchdog on proper service destroy
+        handler.removeCallbacks(watchdogRunnable)
+        isLocationUpdatesStarted = false
+        isSubscribedToAlarms = false
         serviceScope.cancel()
     }
 
@@ -92,27 +140,63 @@ class GeofenceMonitorService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "ACTION_STOP_ALARM") {
             forceStopAlarm()
+        } else {
+            // When Android kills the process and START_STICKY restarts it, onCreate() is
+            // NOT called again — only onStartCommand() is, with a null intent. The old
+            // serviceScope is cancelled and liveAlarms is empty. Revive everything here.
+            if (!serviceScope.isActive) {
+                Log.w("GeofenceService", "onStartCommand: scope cancelled, recreating")
+                serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            }
+            if (!isSubscribedToAlarms || alarmSubscriptionJob?.isActive != true) {
+                Log.w("GeofenceService", "onStartCommand: re-subscribing to alarms")
+                subscribeToAlarms()
+            }
+            if (!isLocationUpdatesStarted) {
+                Log.w("GeofenceService", "onStartCommand: restarting location updates")
+                startLocationUpdates()
+            }
         }
         return START_STICKY
     }
 
-    // ── Firebase Alarm Subscription ────────────────────────────���──────────
+    // Firebase Alarm Subscription ========================================
 
     private fun subscribeToAlarms() {
         val uid = FirebaseRepository.currentUid ?: return
-        serviceScope.launch {
-            FirebaseRepository.observeGeoAlarms(uid).collect { alarms ->
-                liveAlarms = alarms
-                Log.d("GeofenceService", "Alarms updated: ${alarms.size}")
+
+        // Cancel any stale job before launching a new one to avoid duplicate listeners
+        // accumulating across repeated restarts.
+        alarmSubscriptionJob?.cancel()
+        isSubscribedToAlarms = false
+
+        alarmSubscriptionJob = serviceScope.launch {
+            isSubscribedToAlarms = true
+            try {
+                FirebaseRepository.observeGeoAlarms(uid).collect { alarms ->
+                    liveAlarms = alarms
+                    Log.d("GeofenceService", "Alarms updated: ${alarms.size}")
+                }
+            } catch (e: CancellationException) {
+                throw e // Normal cancellation — rethrow, don't log as error
+            } catch (e: Exception) {
+                Log.e("GeofenceService", "Alarm subscription died unexpectedly", e)
+            } finally {
+                // Mark unsubscribed so the watchdog knows to revive it
+                isSubscribedToAlarms = false
+                Log.w("GeofenceService", "Alarm subscription ended — watchdog will revive")
             }
         }
     }
 
-    // ── Location Updates ──────────────────────────────────────────────────
+    // Location Updates ==================================================
 
     private fun startLocationUpdates() {
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5_000)
             .setMinUpdateIntervalMillis(MIN_LOCATION_UPDATE_TIME_INTERVAL)
+            // adding distance constraint helps location requests survive Doze mode
+            // better than a time-only constraint, which Android throttles aggressively when idle.
+            .setMinUpdateDistanceMeters(5f)
             .build()
 
         locationCallback = object : LocationCallback() {
@@ -124,17 +208,31 @@ class GeofenceMonitorService : Service() {
                     checkGroupGeofencesAndNotify(location)
                 }
             }
+
+            // detect when the OS pauses location delivery (Doze / GPS off) and flag it
+            // so the watchdog can re-request updates on the next tick.
+            override fun onLocationAvailability(availability: LocationAvailability) {
+                if (!availability.isLocationAvailable) {
+                    Log.w("GeofenceService", "Location unavailable — Doze or GPS off")
+                    isLocationUpdatesStarted = false
+                } else {
+                    isLocationUpdatesStarted = true
+                }
+            }
         }
 
         try {
             fusedLocationClient.requestLocationUpdates(
                 locationRequest, locationCallback, Looper.getMainLooper())
+            isLocationUpdatesStarted = true
+            Log.d("GeofenceService", "Location updates started")
         } catch (e: SecurityException) {
             Log.e("GeofenceService", "Location permission missing", e)
+            isLocationUpdatesStarted = false
         }
     }
 
-    // ── Geofence Checking ─────────────────────────────────────────────────
+    // Geofence Checking =================================================
 
     @RequiresApi(Build.VERSION_CODES.O)
     private fun checkGeofences(location: Location) {
@@ -187,7 +285,7 @@ class GeofenceMonitorService : Service() {
         }
     }
 
-    // ── Group Geofence Arrival Detection ────────────────────────────────
+    // Group Geofence Arrival Detection ================================
 
     /**
      * Check if current user has entered any group geofences and notify group members.
@@ -261,6 +359,7 @@ class GeofenceMonitorService : Service() {
             null
         }
     }
+
     private fun sendMemberArrivedNotification(groupId: String, groupTitle: String, memberId: String) {
         serviceScope.launch {
             try {
@@ -323,7 +422,7 @@ class GeofenceMonitorService : Service() {
         }
     }
 
-    // ── Live Location Push to Groups ──────────────────────────────────────
+    // Live Location Push to Groups ======================================
 
     private fun pushLiveLocationToGroups(location: Location) {
         val uid = FirebaseRepository.currentUid ?: return
@@ -353,7 +452,7 @@ class GeofenceMonitorService : Service() {
             }
     }
 
-    // ── Alarm Audio / Vibration ───────────────────────────────────────────
+    // Alarm Audio / Vibration ===========================================
 
     private fun triggerGeoAlarm(alarm: GeoAlarm) {
         // Always send individual notification for this alarm
@@ -437,7 +536,7 @@ class GeofenceMonitorService : Service() {
         val summaryNotification = NotificationCompat.Builder(this, ALARM_CHANNEL_ID)
             .setContentTitle("$count Active Alarms")
             .setContentText("Multiple geofence alarms are triggered")
-            .setSmallIcon(R.drawable.ic_lock_idle_alarm) // Fix: Use your icon
+            .setSmallIcon(R.drawable.ic_lock_idle_alarm) // Use your icon
             .setStyle(inboxStyle)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -578,7 +677,7 @@ class GeofenceMonitorService : Service() {
         }
     }
 
-    // ── Notifications ─────────────────────────────────────────────────────
+    // Notifications =====================================================
 
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -612,10 +711,32 @@ class GeofenceMonitorService : Service() {
     }
 
     companion object {
-        //put here so other logic can also use
+        private const val WATCHDOG_INTERVAL_MS = 60_000L
+
+        // put here so other logic can also use
         fun checkPointInGeofence(point: LatLng, geofence: GeofenceArea): Boolean {
             return if (geofence.typeId == 1) checkPointInCircle(point, geofence)
             else checkPointInPolygon(point, geofence.points)
+        }
+
+        /**
+         * Call this from MainActivity on first launch to prompt the user to exempt
+         * the app from battery optimisation. Without this, Doze mode throttles location
+         * updates to ~15-min intervals and may kill the service after the screen is off.
+         *
+         * Also add to AndroidManifest.xml:
+         *   <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+         */
+        fun requestBatteryOptimizationExemption(activity: Activity) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val pm = activity.getSystemService(POWER_SERVICE) as PowerManager
+                if (!pm.isIgnoringBatteryOptimizations(activity.packageName)) {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:${activity.packageName}")
+                    }
+                    activity.startActivity(intent)
+                }
+            }
         }
     }
 }
