@@ -28,7 +28,6 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
-import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.resumeWithException
 
 
@@ -45,7 +44,6 @@ object FirebaseRepository {
         currentUid ?: throw IllegalStateException("Not authenticated")
 
     // ============================= Auth =================================
-
     suspend fun signIn(email: String, password: String): FirebaseUser {
         val result = auth.signInWithEmailAndPassword(email, password).await()
         return result.user ?: error("Sign-in returned null user")
@@ -71,7 +69,7 @@ object FirebaseRepository {
 
     fun signOut() = auth.signOut()
 
-    // User Profile ======================================================
+    // =========================== User Profile ===========================
 
     suspend fun fetchUserProfile(uid: String): UserProfileData? =
         db.child("users").child(uid).get().await().toUserProfileData()
@@ -96,11 +94,11 @@ object FirebaseRepository {
         awaitClose { ref.removeEventListener(listener) }
     }
 
-    /** Resolves a UID to a display username. Falls back to "Unknown". */
+    // Resolves a UID to a display username. Falls back to "Unknown".
     suspend fun getUsername(uid: String): String =
         db.child("uids").child(uid).get().await().getValue(String::class.java) ?: "Unknown"
 
-    // Groups ============================================================
+    // ============================= Groups ===============================
 
     /**
      * Save a NEW group only. groupId must be null — Firebase generates the key.
@@ -327,7 +325,7 @@ object FirebaseRepository {
     /**
      * A non-SuperAdmin member or admin leaves the group.
      *
-     * - SuperAdmins cannot leave — they must Disband. The UI enforces this by hiding
+     * - SuperAdmins cannot leave;they must Disband. The UI enforces this by hiding
      *   the Leave button for SuperAdmins.
      * - Regular Admins can only leave if a SuperAdmin exists in the group (the UI also
      *   enforces this). If the admin is the last leader, the Leave button is hidden.
@@ -458,7 +456,7 @@ object FirebaseRepository {
         awaitClose { ref.removeEventListener(listener) }
     }
 
-    // Notifications =====================================================
+    // ============================ Notifications =========================
 
     private fun observeUserNotifications(uid: String): Flow<List<NotificationItem>> = callbackFlow {
         if (uid.isEmpty()) { trySend(emptyList()); awaitClose {}; return@callbackFlow }
@@ -526,7 +524,7 @@ object FirebaseRepository {
         }
     }
 
-    // Group Actions =====================================================
+    //  ========================= Group Actions============================
 
     suspend fun inviteToGroup(groupId: String, targetUid: String) {
         ensureAuth()
@@ -571,7 +569,6 @@ object FirebaseRepository {
         db.updateChildren(updates).await()
     }
 
-    /** Toggle location sharing for a UID. Enforces canToggleSharing. */
     suspend fun toggleLocationSharing(groupId: String, uid: String, enabled: Boolean) {
         ensureAuth()
         val canToggle = db.child("groups").child(groupId)
@@ -582,14 +579,6 @@ object FirebaseRepository {
             .child("locationSharingEnabled").child(uid).setValue(enabled).await()
     }
 
-    /** Set canToggleSharing for a member. Only Admins/SuperAdmins should call this. */
-    suspend fun setCanToggleSharing(groupId: String, targetUid: String, allowed: Boolean) {
-        ensureAuth()
-        db.child("groups").child(groupId)
-            .child("canToggleSharing").child(targetUid).setValue(allowed).await()
-    }
-
-    /** Member applies for admin role. Writes only to adminApplications/$uid — member safe. */
     suspend fun applyForAdmin(groupId: String, uid: String) {
         ensureAuth()
         db.child("groups").child(groupId)
@@ -643,7 +632,7 @@ object FirebaseRepository {
         }
     }
 
-    /** Cast a vote to remove an admin. Demotes if threshold met. SuperAdmin is protected. */
+    // vote to remove admin. Demotes if threshold met. SuperAdmin is protected.
     @RequiresApi(Build.VERSION_CODES.O)
     suspend fun voteToRemoveAdmin(
         groupId: String,
@@ -658,7 +647,7 @@ object FirebaseRepository {
         if (entry.isSuperAdmin(targetUid))
             throw IllegalStateException("Cannot vote to remove a Super Admin")
 
-        // SuperAdmin path: immediate demotion ===============================
+        // ============== SuperAdmin: immediate demotion =================
         if (entry.isSuperAdmin(voterUid)) {
             val updates = mapOf<String, Any?>(
                 "memberRoles/$targetUid"               to GroupRole.MEMBER.name,
@@ -689,9 +678,9 @@ object FirebaseRepository {
             return true
         }
 
-        // Regular-member path ===============================================
+        // ======================= Regular-member path ========================
 
-        // Step 1 — Cast vote once (rule enforces !data.exists() → safe from double-vote)
+        // Step 1: Cast vote once (rule enforces !data.exists() → safe from double-vote)
         try {
             groupRef
                 .child("votesToRemoveAdmin")
@@ -774,32 +763,6 @@ object FirebaseRepository {
         Log.d("FirebaseRepository", "abstainFromRemovalVote: $voterUid abstained on $targetUid")
     }
 
-    /** Remove a member from a group. SuperAdmins cannot be removed. */
-    @RequiresApi(Build.VERSION_CODES.O)
-    suspend fun removeMemberFromGroup(groupId: String, targetUid: String) {
-        ensureAuth()
-        val groupRef = db.child("groups").child(groupId)
-        val entry = groupRef.get().await().toGroupEntry() ?: return
-        if (entry.isSuperAdmin(targetUid))
-            throw IllegalStateException("Super-Admins cannot be removed from groups.")
-
-        val updates = mutableMapOf<String, Any?>(
-            "memberIds/$targetUid"           to null,
-            "memberRoles/$targetUid"         to null,
-            "locationSharingEnabled/$targetUid" to null,
-            "canToggleSharing/$targetUid"    to null,
-            "tripStatus/$targetUid"          to null
-        )
-        groupRef.updateChildren(updates).await()
-        db.child("groupLocations").child(groupId).child(targetUid).removeValue().await()
-        db.child("users").child(targetUid).child("groups").child(groupId).removeValue().await()
-
-        // decrement memberCount
-        val currentCount = groupRef.child("memberCount").get().await()
-            .getValue(Int::class.java) ?: entry.groupMemberNames.size
-        groupRef.child("memberCount").setValue(maxOf(0, currentCount - 1)).await()
-    }
-
     /** Set trip status. TRAVELLING auto-enables sharing; ARRIVED auto-stops it. */
     suspend fun setTripStatus(groupId: String, uid: String, status: TripStatus) {
         ensureAuth()
@@ -821,27 +784,6 @@ object FirebaseRepository {
             updates["groups/$groupId/locationSharingEnabled/$uid"] = false
         }
         db.updateChildren(updates).await()
-    }
-
-    fun observeTripStatus(groupId: String): Flow<Map<String, TripStatus>> = callbackFlow {
-        val ref = db.child("groups").child(groupId).child("tripStatus")
-        val listener = ref.addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val map = snapshot.children.associate { child ->
-                    val uid = child.key ?: ""
-                    val status = try {
-                        TripStatus.valueOf(child.getValue(String::class.java) ?: "INACTIVE")
-                    } catch (e: Exception) { TripStatus.INACTIVE }
-                    uid to status
-                }
-                trySend(map)
-            }
-            override fun onCancelled(error: DatabaseError) {
-                Log.w("FirebaseRepository", "observeTripStatus cancelled: ${error.message}")
-                trySend(emptyMap())
-            }
-        })
-        awaitClose { ref.removeEventListener(listener) }
     }
 
     /**
@@ -907,7 +849,7 @@ object FirebaseRepository {
         }
     }
 
-    // Live Location =====================================================
+    // ======================== Live Location =============================
 
     fun pushLocation(groupId: String, uid: String, lat: Double, lng: Double) {
         if (isGuest()) return
@@ -936,7 +878,7 @@ object FirebaseRepository {
         awaitClose { ref.removeEventListener(listener) }
     }
 
-    // Geo Alarms ========================================================
+    // =========================== Geo Alarms =============================
 
     fun observeGeoAlarms(uid: String): Flow<List<GeoAlarm>> = callbackFlow {
         if (uid.isEmpty()) { trySend(emptyList()); close(); return@callbackFlow }
@@ -1030,11 +972,8 @@ object FirebaseRepository {
         db.child("geoAlarms").child(uid).child(alarmId).removeValue().await()
     }
 
-    // User Geofences ====================================================
+    // ======================== User Geofences ============================
 
-    /**
-     * Save a geofence with proper type handling
-     */
     suspend fun saveGeofence(uid: String, geofence: GeofenceArea) {
         // Determine type based on points - if points is empty, it's circular (typeId=1)
         val typeId = if (geofence.points.isEmpty()) 1 else 2
@@ -1055,11 +994,6 @@ object FirebaseRepository {
         )
 
         db.child("geofences").child(uid).child(geofence.id).setValue(data).await()
-    }
-
-    suspend fun saveUserGeofences(uid: String, data: Any) {
-        ensureAuth()
-        db.child("geofences").child(uid).setValue(data).await()
     }
 
     fun saveGeofenceToFirebase(
@@ -1105,9 +1039,7 @@ object FirebaseRepository {
             }
     }
 
-    /**
-     * Delete a geofence from Firebase using its ID
-     */
+    //Delete a geofence from Firebase using its ID
     fun deleteGeofenceFromFirebase(
         database: DatabaseReference,
         userId: String,
@@ -1138,39 +1070,7 @@ object FirebaseRepository {
             }
     }
 
-    // Group Geofence =====================================================
-
-    /**
-     * Set or update the group's geofence. Creates an independent copy so members
-     * removing the geofence locally doesn't affect the group's geofence.
-     * Only Admins/SuperAdmins can call this.
-     */
-    suspend fun setGroupGeofence(groupId: String, geofence: GeofenceArea?) {
-        ensureAuth()
-        val groupRef = db.child("groups").child(groupId).child("geofence")
-
-        if (geofence == null) {
-            groupRef.removeValue().await()
-            Log.d("FirebaseRepository", "removeGroupGeofence: removed geofence from group $groupId")
-        } else {
-            // Store the geofence copy with group-specific ID
-            val data = mapOf(
-                "id" to geofence.id,  // This is now the group-specific ID
-                "name" to geofence.name,
-                "center" to mapOf("lat" to geofence.center.latitude, "lng" to geofence.center.longitude),
-                "typeId" to geofence.typeId,
-                "radius" to geofence.radius,
-                "points" to geofence.points.map { mapOf("lat" to it.latitude, "lng" to it.longitude) },
-                "geoAlarmId" to geofence.geoAlarmId  // Will be null for group geofences
-            )
-            groupRef.setValue(data).await()
-            Log.d("FirebaseRepository", "setGroupGeofence: set geofence for group $groupId with ID=${geofence.id}")
-        }
-    }
-
-    /**
-     * Observe the group's geofence.
-     */
+    // ============================ Group Geofence =========================
     fun observeGroupGeofence(groupId: String): Flow<GeofenceArea?> = callbackFlow {
         val ref = db.child("groups").child(groupId).child("geofence")
         val listener = ref.addValueEventListener(object : ValueEventListener {
@@ -1187,7 +1087,7 @@ object FirebaseRepository {
 }
 
 
-// Notification Item Sealed Class ===========================================
+// ==================== Notification Item Sealed Class =======================
 
 sealed class NotificationItem {
     data class Invitation(val groupId: String, val groupTitle: String) : NotificationItem()
@@ -1197,11 +1097,11 @@ sealed class NotificationItem {
     data class Demoted(val groupId: String, val groupTitle: String, val demotedByName: String, val notificationId: String) : NotificationItem()
 }
 
-// Data classes ==============================================================
+// ============================== Data classes ================================
 
 data class LatLngSnapshot(val lat: Double, val lng: Double)
 
-// Snapshot extension helpers ================================================
+// ====================== Snapshot extension helpers ==========================
 
 private fun DataSnapshot.toUserProfileData(): UserProfileData? {
     val userName = child("userName").getValue(String::class.java) ?: return null

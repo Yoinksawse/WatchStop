@@ -100,7 +100,7 @@ class GeofenceMonitorService : Service() {
         }
     }
 
-    // Lifecycle =========================================================
+    // ========================== Lifecycle ===============================
 
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate() {
@@ -160,7 +160,7 @@ class GeofenceMonitorService : Service() {
         return START_STICKY
     }
 
-    // Firebase Alarm Subscription ========================================
+    // ================== Firebase Alarm Subscription ======================
 
     private fun subscribeToAlarms() {
         val uid = FirebaseRepository.currentUid ?: return
@@ -189,7 +189,7 @@ class GeofenceMonitorService : Service() {
         }
     }
 
-    // Location Updates ==================================================
+    // ======================= Location Updates ===========================
 
     private fun startLocationUpdates() {
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5_000)
@@ -232,7 +232,7 @@ class GeofenceMonitorService : Service() {
         }
     }
 
-    // Geofence Checking =================================================
+    // ======================= Geofence Checking ==========================
 
     @RequiresApi(Build.VERSION_CODES.O)
     private fun checkGeofences(location: Location) {
@@ -285,11 +285,8 @@ class GeofenceMonitorService : Service() {
         }
     }
 
-    // Group Geofence Arrival Detection ================================
+    // =============== Group Geofence Arrival Detection =================
 
-    /**
-     * Check if current user has entered any group geofences and notify group members.
-     */
     @RequiresApi(Build.VERSION_CODES.O)
     private fun checkGroupGeofencesAndNotify(location: Location) {
         val uid = FirebaseRepository.currentUid ?: return
@@ -422,7 +419,7 @@ class GeofenceMonitorService : Service() {
         }
     }
 
-    // Live Location Push to Groups ======================================
+    // ================ Live Location Push to Groups ======================
 
     private fun pushLiveLocationToGroups(location: Location) {
         val uid = FirebaseRepository.currentUid ?: return
@@ -452,21 +449,17 @@ class GeofenceMonitorService : Service() {
             }
     }
 
-    // Alarm Audio / Vibration ===========================================
+    // ================== Alarm Audio / Vibration =========================
 
     private fun triggerGeoAlarm(alarm: GeoAlarm) {
         // Always send individual notification for this alarm
         sendGeoAlarmNotification(alarm)
 
         // Start audio/vibration if not already playing
-        if (mediaPlayer == null) {
-            startAlarmAudioAndVibration()
-        }
+        if (mediaPlayer == null) startAlarmAudioAndVibration()
 
         // Update or show summary notification for multiple alarms
-        if (activeAlarms.size > 1) {
-            showMultipleAlarmsSummary()
-        }
+        if (activeAlarms.size > 1) showMultipleAlarmsSummary()
     }
 
     @SuppressLint("LaunchActivityFromNotification")
@@ -503,6 +496,7 @@ class GeofenceMonitorService : Service() {
         manager?.notify("alarm_${alarm.id}".hashCode(), notification)
     }
 
+    @SuppressLint("LaunchActivityFromNotification")
     private fun showMultipleAlarmsSummary() {
         val manager = getSystemService(NotificationManager::class.java)
         val count = activeAlarms.size
@@ -677,7 +671,7 @@ class GeofenceMonitorService : Service() {
         }
     }
 
-    // Notifications =====================================================
+    // ======================= Notifications ==============================
 
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -717,26 +711,6 @@ class GeofenceMonitorService : Service() {
         fun checkPointInGeofence(point: LatLng, geofence: GeofenceArea): Boolean {
             return if (geofence.typeId == 1) checkPointInCircle(point, geofence)
             else checkPointInPolygon(point, geofence.points)
-        }
-
-        /**
-         * Call this from MainActivity on first launch to prompt the user to exempt
-         * the app from battery optimisation. Without this, Doze mode throttles location
-         * updates to ~15-min intervals and may kill the service after the screen is off.
-         *
-         * Also add to AndroidManifest.xml:
-         *   <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
-         */
-        fun requestBatteryOptimizationExemption(activity: Activity) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                val pm = activity.getSystemService(POWER_SERVICE) as PowerManager
-                if (!pm.isIgnoringBatteryOptimizations(activity.packageName)) {
-                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                        data = Uri.parse("package:${activity.packageName}")
-                    }
-                    activity.startActivity(intent)
-                }
-            }
         }
     }
 }

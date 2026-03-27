@@ -196,7 +196,6 @@ private fun ProfileScreen() {
             )
         }
 
-        // --- NEW: Change Password Button ---
         OutlinedButton(
             onClick = { showPasswordDialog = true },
             modifier = Modifier
@@ -208,7 +207,6 @@ private fun ProfileScreen() {
                 fontSize = MaterialTheme.typography.bodyLarge.fontSize * X.value
             )
         }
-        // -----------------------------------
 
         Spacer(modifier = Modifier.weight(1f))
 

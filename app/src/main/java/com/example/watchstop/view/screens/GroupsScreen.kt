@@ -32,9 +32,6 @@ import com.example.watchstop.model.GroupRole
 import com.example.watchstop.data.FirebaseRepository
 import com.example.watchstop.data.NotificationItem
 import com.example.watchstop.view.GroupCard
-import com.example.watchstop.view.ui.theme.NeonLime
-import com.example.watchstop.view.ui.theme.AndroidPurple
-import com.example.watchstop.view.ui.theme.SlateGrey
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -147,8 +144,6 @@ fun GroupsScreen() {
                             onClick = {
                                 showFabMenu = false
                                 refreshTrigger++
-
-                                //TODO: refresh groups
                             }
                         )
                         DropdownMenuItem(

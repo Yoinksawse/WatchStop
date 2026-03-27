@@ -110,7 +110,6 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
     // We never diff live Firebase vs local state — that was the root cause of the bug
     // where a member accepting an invitation got evicted when the admin pressed Save.
     val explicitlyRemovedMembers = remember { mutableStateOf(setOf<String>()) }
-    // Stores uid → displayName for removed members so we can show them in the UI
     val removedMemberNames = remember { mutableStateMapOf<String, String>() }
     // Cache of all resolved display names so Remove can snapshot the name immediately
     val resolvedDisplayNames = remember { mutableStateMapOf<String, String>() }
@@ -150,8 +149,6 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
     val successColor = NICEGREEN_COLOUR
     val secondaryText = if (darkmode) Color(0xFF8E8E93) else Color(0xFF636366)
     val outlineColor = if (darkmode) ElectricYellow else SlateGrey
-    val buttonBorder = BorderStroke(1.dp, outlineColor.copy(alpha = 0.6f))
-    val buttonContentColor = if (darkmode) Color.White else Color.Black
 
     //if no geofence selected/created
     if (showNoGeofenceDialog) {
@@ -543,15 +540,13 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                     }
                 }
 
-                // ================= Pending Admin Applications ================
+                // ================= pending Admin Applications ================
                 if (currentIsAdmin && adminApplications.isNotEmpty()) {
                     HorizontalDivider()
                     Text("Pending Admin Applications", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
                         fontSize = MaterialTheme.typography.titleMedium.fontSize * X.value)
                     adminApplications.toList().forEach { applicant ->
                         val votes = appVotes.getOrPut(applicant) { mutableSetOf() }
-                        val needed = ((memberNames.size - 1) / 2) + 1
-                        val hasVoted = votes.contains(currentUser)
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = accentColor.copy(alpha = 0.08f)),
@@ -577,9 +572,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                                 canToggle[applicant] = true
                                                 adminApplications.remove(applicant)
                                                 appVotes.remove(applicant)
-                                            } catch (e: Exception) {
-                                                // ignore
-                                            }
+                                            } catch (e: Exception) { }
                                         }
                                     }
                                 ) {
@@ -587,7 +580,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                         fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                                 }
                                 // Deny now calls FirebaseRepository.declineAdminApplication
-                                // (which uses groupRef with relative paths — admin safe).
+                                // (which uses groupRef with relative paths, admin safe).
                                 TextButton(
                                     onClick = {
                                         coroutineScope.launch {
@@ -596,9 +589,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                                     groupId, applicant)
                                                 adminApplications.remove(applicant)
                                                 appVotes.remove(applicant)
-                                            } catch (e: Exception) {
-                                                // ignore
-                                            }
+                                            } catch (e: Exception) { }
                                         }
                                     }
                                 ) {
@@ -708,7 +699,6 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                             )
 
                             // Fire demotions for any member whose role was locally changed
-                            // from ADMIN → MEMBER by the Demote button
                             groupSnapshot.memberRoles.forEach { (uid, originalRole) ->
                                 val newRole = memberRoles[uid]
                                 if (originalRole == GroupRole.ADMIN && newRole == GroupRole.MEMBER) {
@@ -754,7 +744,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                         selectedDate = LocalDate.of(yearInt, monthInt, dayInt)
                     }
                 } catch (e: Exception) {
-                    // Invalid date, ignore
+                    // invalid date, ignore
                 }
             }
 
@@ -767,9 +757,6 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                 unfocusedLabelColor = Color.Gray,
                 cursorColor = outlineColor
             )
-
-            val buttonBorder = BorderStroke(1.dp, outlineColor.copy(alpha = 0.3f))
-            val buttonContentColor = if (darkmode) Color.White else Color.Black
 
             AlertDialog(
                 onDismissRequest = { showInfoDialog = false },

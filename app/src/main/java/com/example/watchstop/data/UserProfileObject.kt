@@ -14,11 +14,7 @@ const val GUEST_EMAIL = "a@b.c"
 const val DEFAULT_PFP = "defaultpfp"
 const val INITIAL_DARKMODE = true
 
-/**
- * In-memory state for the currently signed-in user.
- *
- * Source of truth is now Firebase Auth + Realtime Database.
- */
+// Firebase auth + realtime database used to store most data, but this is temp holder
 object UserProfileObject {
 
     private val scope = CoroutineScope(Dispatchers.Main)
@@ -30,9 +26,7 @@ object UserProfileObject {
     var darkmode: Boolean by mutableStateOf(INITIAL_DARKMODE)
     var email: String by mutableStateOf(GUEST_EMAIL)
 
-    /** Reactive login state for Compose. 
-     *  True only if the user is authenticated AND has a non-Guest username.
-     */
+
     var isLoggedIn: Boolean by mutableStateOf(false)
         private set
 
@@ -84,7 +78,7 @@ object UserProfileObject {
         profileJob = null
     }
 
-    /** Manually trigger a sync if needed (e.g. on app startup). */
+    //manually sync if needed (e.g. on startup)
     fun syncFromFirebase(externalScope: CoroutineScope = CoroutineScope(Dispatchers.Main)) {
         val currentUid = uid ?: return
         startObservingProfile(currentUid)
@@ -138,11 +132,5 @@ object UserProfileObject {
     fun signOut() {
         FirebaseRepository.signOut()
         isLoggedIn = false
-    }
-
-    fun inDarkMode() = darkmode
-    fun setDarkMode(value: Boolean) {
-        darkmode = value
-        pushToFirebase()
     }
 }

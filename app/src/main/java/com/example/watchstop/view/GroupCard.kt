@@ -67,7 +67,6 @@ fun GroupCard(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val snapshot = remember { CurrentGroupObject.getCurrentGroupEntry() }
 
     // Current user's UID — read at composition, stable after login
     var demoteConfirmationText by remember { mutableStateOf("") }
@@ -77,16 +76,7 @@ fun GroupCard(
     var isExpanded by remember { mutableStateOf(false) }
 
     //members stuff
-    val currentUser = UserProfileObject.uid ?: ""
-    val memberNames = remember { mutableStateListOf(*snapshot.groupMemberNames.toTypedArray()) }
     var showRemovalDialogFor by remember { mutableStateOf<String?>(null) }
-    val memberRoles = remember { mutableStateMapOf<String, GroupRole>().apply { putAll(snapshot.memberRoles) } }
-    val removalVotes = remember {
-        mutableStateMapOf<String, MutableSet<String>>().apply {
-            snapshot.votesToRemoveAdmin.forEach { (k, v) -> put(k, v.toMutableSet()) }
-        }
-    }
-    val canToggle = remember { mutableStateMapOf<String, Boolean>().apply { putAll(snapshot.canToggleSharing) } }
 
     // Expansion state for description
     var expanded by remember { mutableStateOf(false) }
@@ -99,11 +89,6 @@ fun GroupCard(
     val isAdmin = userRole == GroupRole.ADMIN || userRole == GroupRole.SUPER_ADMIN
     val isSuperAdmin = userRole == GroupRole.SUPER_ADMIN
 
-    // Does this group have any super admin besides the current user?
-    val hasSuperAdmin = group.memberRoles.any { (uid, role) ->
-        role == GroupRole.SUPER_ADMIN
-    }
-
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
@@ -113,7 +98,7 @@ fun GroupCard(
             group = GroupEntry(updated)
             onEdited(group)
         }
-        // If it crashed/returned without saving, group stays as-is
+        // If it crashed/returned without saving, group stays as it is
     }
 
     val backgroundColor = if (darkmode) Color(0xFF1C1C1E) else Color.White
@@ -490,7 +475,7 @@ fun GroupCard(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Locations Section =======================================
+                    // ================== Locations Section =====================
                     MiniHeader("Locations", secondaryText)
 
                     val isSharing = group.locationSharingEnabled[currentUid] ?: false
@@ -536,7 +521,7 @@ fun GroupCard(
                             }
                         )
 
-                        // Trip status cycle: Inactive → Travelling → Arrived → Inactive
+                        // Trip status cycle: Inactive, Travelling, Arrived
                         SketchButton(
                             text = when (currentStatus) {
                                 TripStatus.INACTIVE -> "Start Trip"
@@ -630,7 +615,7 @@ fun GroupCard(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Management Section ======================================
+                    // =================== Management Section ===================
                     MiniHeader("Management", secondaryText)
 
                     // Manage group (admins) or Apply for admin (members)
@@ -656,7 +641,7 @@ fun GroupCard(
                         )
                     }
 
-                    // My pending application banner ===========================
+                    // ============ my pending application banner ===============
                     if (group.adminApplications.contains(currentUid)) {
                         Spacer(modifier = Modifier.height(10.dp))
                         val voteCount = group.adminApplicationVoteCount(currentUid)
@@ -674,7 +659,7 @@ fun GroupCard(
                         }
                     }
 
-                    // Admin Removal Dialog =======================================
+                    // ===================== Admin Demotion Dialog ==================
                     showRemovalDialogFor?.let { targetUid ->
                         val targetRole = group.memberRoles[targetUid] ?: GroupRole.MEMBER
                         val isTargetSuperAdmin = targetRole == GroupRole.SUPER_ADMIN
@@ -696,7 +681,7 @@ fun GroupCard(
                             text = {
                                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                     when {
-                                        // Direct admin removal by super admin
+                                        // Direct admin demotion by super admin
                                         isSuperAdmin -> {
                                             Text("You are about to demote an Admin.",
                                                 fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
@@ -704,7 +689,7 @@ fun GroupCard(
                                                 fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                                         }
 
-                                        // Vote-based removal completed
+                                        // Vote-based demotion completed
                                         else -> {
                                             Text("The vote to demote this Admin has reached the required threshold (${voteCount}/${needed}).",
                                                 fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
@@ -825,7 +810,7 @@ fun GroupCard(
                         )
                     }
 
-                    // Pending applications visible to admins ==================
+                    // ========= Pending applications visible to admins =========
                     if (isAdmin) {
                         val pending = group.adminApplications.filter { it != currentUid }
                         if (pending.isNotEmpty()) {
@@ -888,7 +873,7 @@ fun GroupCard(
     }
 }
 
-// Shared small components ==================================================
+// ========================== small util components ========================
 
 @Composable
 fun MiniHeader(text: String, color: Color) {

@@ -5,10 +5,8 @@ import androidx.annotation.RequiresApi
 import com.example.watchstop.model.GroupEntry
 import java.time.LocalDateTime
 
-/**
- * Singleton that holds the group currently being edited in EditGroupActivity.
- * Acts as a bridge between GroupCard (launcher) and EditGroupActivity (editor).
- */
+// holds the group currently being edited in EditGroupActivity
+// bridges GroupCard (launcher) and EditGroupActivity (editor)
 object CurrentGroupObject {
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -18,19 +16,19 @@ object CurrentGroupObject {
         description = ""
     )
 
-    private var _groupId: String = ""  // ADD THIS
+    private var _groupId: String = ""
 
     var activated: Boolean = false
 
     @RequiresApi(Build.VERSION_CODES.O)
     fun getCurrentGroupEntry(): GroupEntry = _groupEntry
 
-    fun getCurrentGroupId(): String = _groupId  // ADD THIS
+    fun getCurrentGroupId(): String = _groupId
 
     @RequiresApi(Build.VERSION_CODES.O)
-    fun loadCurrentGroupEntry(other: GroupEntry, groupId: String = "") {  // ADD groupId param
+    fun loadCurrentGroupEntry(other: GroupEntry, groupId: String = "") {
         _groupEntry = GroupEntry(other)
-        _groupId = groupId  // ADD THIS
+        _groupId = groupId
         activated = true
     }
 
@@ -41,7 +39,7 @@ object CurrentGroupObject {
             eventDateTime = LocalDateTime.now(),
             description = ""
         )
-        _groupId = ""  // ADD THIS
+        _groupId = ""
         activated = false
     }
 }

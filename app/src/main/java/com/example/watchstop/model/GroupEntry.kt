@@ -16,7 +16,6 @@ data class GroupEntry(
     var title: String,
     var eventDateTime: LocalDateTime,
     var description: String,
-    // All member keys are Firebase UIDs
     var groupMemberNames: MutableList<String> = mutableListOf(),
     val pendingInvitations: MutableSet<String> = mutableSetOf(),
     val memberRoles: MutableMap<String, GroupRole> = mutableMapOf(),
@@ -26,13 +25,11 @@ data class GroupEntry(
     val adminApplications: MutableSet<String> = mutableSetOf(),
     val adminApplicationVotes: MutableMap<String, MutableSet<String>> = mutableMapOf(),
     val votesToRemoveAdmin: MutableMap<String, MutableSet<String>> = mutableMapOf(),
-    // New counter fields for security rules
     var memberCount: Int = 0,
     val voteCountsToRemoveAdmin: MutableMap<String, Int> = mutableMapOf(),
     var removalAbstentions: MutableMap<String, MutableSet<String>> = mutableMapOf(),
     var geofence: GeofenceArea? = null
 ) {
-    /** Deep-copy constructor */
     constructor(other: GroupEntry) : this(
         title = other.title,
         eventDateTime = other.eventDateTime,
@@ -93,7 +90,7 @@ data class GroupEntry(
         canToggleSharing[uid] = allowed
     }
 
-    // === Location Sharing ==================================================
+    // ======================== Location Sharing =============================
 
     fun toggleSharing(uid: String): Boolean {
         // Requirement: A user may stop sharing their location only if permitted by an Administrator or Super-Administrator.
@@ -107,7 +104,7 @@ data class GroupEntry(
         locationSharingEnabled[uid] = enabled
     }
 
-    // === Trip Status =======================================================
+    // =============================== Trip Status ===========================
 
     fun setTripStatus(uid: String, status: TripStatus) {
         tripStatus[uid] = status
@@ -121,7 +118,7 @@ data class GroupEntry(
         }
     }
 
-    // === Admin Applications ================================================
+    // ====================== Admin Applications =============================
 
     fun applyForAdmin(uid: String): Boolean {
         val role = memberRoles[uid] ?: return false
@@ -161,7 +158,7 @@ data class GroupEntry(
         adminApplicationVotes.remove(uid)
     }
 
-    // === Admin Removal Voting ==============================================
+    // ======================= Admin Removal Voting ==========================
 
     fun voteToRemoveAdmin(targetUid: String, voterUid: String): Boolean {
         val targetRole = memberRoles[targetUid] ?: return false
@@ -199,7 +196,7 @@ data class GroupEntry(
     fun hasVotedToRemove(targetUid: String, voterUid: String): Boolean =
         votesToRemoveAdmin[targetUid]?.contains(voterUid) == true
 
-    // === Utility ===========================================================
+    // =========================== Utility ===================================
 
     fun getRole(uid: String): GroupRole = memberRoles[uid] ?: GroupRole.MEMBER
     fun isAdmin(uid: String): Boolean {

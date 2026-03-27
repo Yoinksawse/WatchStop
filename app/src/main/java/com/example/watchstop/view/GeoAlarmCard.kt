@@ -161,7 +161,7 @@ fun GeoAlarmCard(
                         )
                     }
 
-                    //DATE/DAY + TIME WINDOW (show if not indefinite)
+                    // DATE/DAY + TIME WINDOW (show if not indefinite)
                     val dateStr = when {
                         alarm.specificDate != null -> alarm.specificDate!!.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
                         alarm.dayOfWeek != null -> "Every " + alarm.dayOfWeek!!.name.lowercase().replaceFirstChar { it.uppercase() }
@@ -249,7 +249,7 @@ fun GeoAlarmCard(
                     }
                 }
 
-                // Edit and Delete buttons on the right
+                // edit and delete buttons
                 Column(
                     modifier = Modifier.padding(start = 8.dp),
                     horizontalAlignment = Alignment.End,

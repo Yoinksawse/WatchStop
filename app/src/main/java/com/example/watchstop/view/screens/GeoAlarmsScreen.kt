@@ -40,6 +40,7 @@ import com.example.watchstop.data.UserProfileObject.darkmode
 import com.example.watchstop.model.GeoAlarm
 import com.example.watchstop.data.FirebaseRepository
 import com.example.watchstop.data.GeoAlarmsDatabase.alarms
+import com.example.watchstop.data.GeoAlarmsDatabase.saveAlarmsToCache
 import com.example.watchstop.view.GeoAlarmCard
 import com.example.watchstop.view.ui.theme.ElectricYellow
 import com.example.watchstop.view.ui.theme.SlateGrey
@@ -47,9 +48,6 @@ import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.launch
 import java.time.*
 import java.time.format.DateTimeFormatter
-
-val DATESETTER_STRING_DEFAULT = "Date: Daily";
-val DAYSETTER_STRING_DEFAULT = "Repeat Weekly: On"
 
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,10 +75,10 @@ fun GeoAlarmsScreen(
         if (uid != null) {
             LaunchedEffect(uid) {
                 FirebaseRepository.observeGeoAlarms(uid).collect { firebaseAlarms ->
-                    GeoAlarmsDatabase.alarms.clear()
-                    GeoAlarmsDatabase.alarms.addAll(firebaseAlarms)
+                    alarms.clear()
+                    alarms.addAll(firebaseAlarms)
                     // Update cache even when using Firebase
-                    GeoAlarmsDatabase.saveAlarmsToCache(context)
+                    saveAlarmsToCache(context)
                 }
             }
         }
@@ -117,7 +115,7 @@ fun GeoAlarmsScreen(
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
 
-                if (GeoAlarmsDatabase.alarms.isEmpty()) {
+                if (alarms.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text("No GeoAlarms set", color = Color.Gray, fontSize = 14.sp * X.value)
                     }
@@ -126,7 +124,7 @@ fun GeoAlarmsScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         contentPadding = PaddingValues(bottom = 80.dp)
                     ) {
-                        items(GeoAlarmsDatabase.alarms) { alarm ->
+                        items(alarms) { alarm ->
                             GeoAlarmCard(
                                 alarm = alarm,
                                 onEdit = {
@@ -219,9 +217,6 @@ fun EditGeoAlarmDialog(
         unfocusedLabelColor = Color.Gray,
         cursorColor = outlineColor
     )
-
-    val buttonBorder = BorderStroke(1.dp, outlineColor.copy(alpha = 0.3f))
-    val buttonContentColor = if (darkmode) Color.White else Color.Black
 
     //if no geofence selected/created
     if (showNoGeofenceDialog) {
@@ -666,7 +661,7 @@ fun EditGeoAlarmDialog(
                                 )
                             }
 
-                            Divider()
+                            HorizontalDivider()
 
                             DropdownMenuItem(
                                 text = {

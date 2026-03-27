@@ -776,21 +776,21 @@ fun formatDuration(seconds: Long): String {
     else return "%02d:%02d".format(minutes, secs)
 }
 
-//linear interpolation: find value at fraction t between a and b
+// linear interpolation: find value at fraction t between a and b
 private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
 fun getColourFromSpeed(speed: Float): Color {
     //normalise v
     val speedFactor = speed.coerceIn(0f, 1f)
 
-    if (speedFactor <= 0.5f) { //first half of speed range (green -> yellow) equals slow
+    if (speedFactor <= 0.5f) { // first half of speed range (green -> yellow) equals slow
         val f = speedFactor / 0.5f
         val r = lerp(0.13f, 1.00f, f)
         val g = lerp(0.70f, 0.85f, f) //more green
         val b = lerp(0.13f, 0.00f, f)
 
         return Color(red = r, green = g, blue = b)
-    } else { //second half of speed range (yellow -> red) equals fast
+    } else { // second half of speed range (yellow -> red) equals fast
         val f = (speedFactor - 0.5f) / 0.5f
         val r = lerp(1.00f, 0.85f, f) //more red
         val g = lerp(0.85f, 0.10f, f)
@@ -840,12 +840,11 @@ fun genColouredSegments(
     return result
 }
 
-//return (coords, index of last point passed)
+// return (coords, index of last point passed)
 fun calcPinPosInfo(points: List<PathPoint>, fraction: Float): Pair<LatLng, Int> {
     if (points.size == 1) return LatLng(points[0].latitude, points[0].longitude) to 0
 
-    //find index of segment the pin is on
-    // + fraction of last seg
+    // find index of segment the pin is on + fraction of last seg
     //|oooooo|ooooo|oooo---|
     //             ^   ^   ^
     //      segIndex   f   segCount
@@ -866,9 +865,7 @@ fun calcPinPosInfo(points: List<PathPoint>, fraction: Float): Pair<LatLng, Int> 
     return LatLng(lat, lng) to nearestIndex
 }
 
-/**
- * Handles the Firebase push logic outside of the UI tree.
- */
+// Firebase save logic
 private fun saveRoute(
     database: com.google.firebase.database.DatabaseReference,
     userId: String,

@@ -7,18 +7,11 @@ import com.google.android.gms.maps.model.LatLng
 import kotlin.math.abs
 import kotlin.math.sqrt
 
-/**
- * Returns true if the closed polygon formed by [points] has any self-intersecting edges.
- *
- * The closing edge (last point -> first point) is included in the check.
- * Adjacent edges share a vertex by definition and are skipped so they never
- * produce a false positive.
- *
- * Uses the parametric segment-intersection test:
- *   - Computes parameters t and u for the two segments.
- *   - A proper (non-endpoint) crossing requires 0 < t < 1 AND 0 < u < 1.
- *   - Parallel segments (denom == 0) are treated as non-intersecting.
- */
+// Check for self-intersection of every 2 polygon lines (adjacent lines skipped)
+//  Uses parametric segment-intersection test:
+//  - Computes parameters t and u for the two segments.
+//  - A proper (non-endpoint) crossing requires 0 < t < 1 AND 0 < u < 1.
+//  - Parallel segments (denom == 0) are treated as non-intersecting.
 fun polygonSelfIntersects(points: List<Offset>): Boolean {
     val n = points.size
     for (i in 0 until n) {
