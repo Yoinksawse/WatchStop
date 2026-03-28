@@ -70,6 +70,11 @@ class GeofenceMonitorService : Service() {
     @Volatile private var isLocationUpdatesStarted = false
     private var alarmSubscriptionJob: Job? = null
 
+    // Cache the last known location so that when liveAlarms updates from Firebase
+    // (e.g. user just toggled an alarm on), we can immediately check whether the device
+    // is already inside that geofence — without waiting for the next location callback.
+    @Volatile private var lastKnownLocation: Location? = null
+
     // ============================== Watchdog ============================
 
     /**
@@ -78,6 +83,7 @@ class GeofenceMonitorService : Service() {
      * skipped onCreate() and left the service in a half-initialised state.
      */
     private val watchdogRunnable = object : Runnable {
+        @RequiresApi(Build.VERSION_CODES.O)
         override fun run() {
             Log.d("GeofenceService", "Watchdog tick — subscribed=$isSubscribedToAlarms, alarms=${liveAlarms.size}, location=$isLocationUpdatesStarted")
 
@@ -137,6 +143,7 @@ class GeofenceMonitorService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "ACTION_STOP_ALARM") {
             forceStopAlarm()
@@ -162,6 +169,7 @@ class GeofenceMonitorService : Service() {
 
     // ================== Firebase Alarm Subscription ======================
 
+    @RequiresApi(Build.VERSION_CODES.O)
     private fun subscribeToAlarms() {
         val uid = FirebaseRepository.currentUid ?: return
 
@@ -173,9 +181,35 @@ class GeofenceMonitorService : Service() {
         alarmSubscriptionJob = serviceScope.launch {
             isSubscribedToAlarms = true
             try {
-                FirebaseRepository.observeGeoAlarms(uid).collect { alarms ->
-                    liveAlarms = alarms
-                    Log.d("GeofenceService", "Alarms updated: ${alarms.size}")
+                FirebaseRepository.observeGeoAlarms(uid).collect { newAlarms ->
+                    // Detect which alarms just became active so we can immediately check
+                    // them against the last known location. Without this, a user already
+                    // inside a geofence when they toggle an alarm on would never trigger it
+                    // — the service only fires on location callbacks, and if the device
+                    // hasn't moved there won't be one until the next GPS update (~5 s).
+                    val previouslyActiveIds = liveAlarms.filter { it.active }.map { it.id }.toSet()
+                    liveAlarms = newAlarms
+                    Log.d("GeofenceService", "Alarms updated: ${newAlarms.size}")
+
+                    val newlyActivated = newAlarms.filter { it.active && it.id !in previouslyActiveIds }
+                    if (newlyActivated.isNotEmpty()) {
+                        val location = lastKnownLocation
+                        if (location != null) {
+                            Log.d("GeofenceService", "Immediately checking ${newlyActivated.size} newly activated alarm(s) against last known location")
+                            // IMPORTANT: checkSpecificAlarms drives NotificationManager,
+                            // MediaPlayer, and Vibrator — all require the main thread.
+                            // This collect{} block runs on Dispatchers.IO (serviceScope),
+                            // so we must switch to Main before calling it. Omitting this
+                            // causes silent failure, which is why restarting the app
+                            // appeared to "fix" it (the normal location callback already
+                            // runs on Looper.getMainLooper()).
+                            withContext(Dispatchers.Main) {
+                                checkSpecificAlarms(location, newlyActivated)
+                            }
+                        } else {
+                            Log.d("GeofenceService", "No last known location yet — newly activated alarms will be checked on next GPS update")
+                        }
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e // Normal cancellation — rethrow, don't log as error
@@ -202,7 +236,9 @@ class GeofenceMonitorService : Service() {
         locationCallback = object : LocationCallback() {
             @RequiresApi(Build.VERSION_CODES.O)
             override fun onLocationResult(result: LocationResult) {
+                // Always runs on the main looper (passed to requestLocationUpdates).
                 result.lastLocation?.let { location ->
+                    lastKnownLocation = location
                     checkGeofences(location)
                     pushLiveLocationToGroups(location)
                     checkGroupGeofencesAndNotify(location)
@@ -241,16 +277,30 @@ class GeofenceMonitorService : Service() {
             Log.w("GeofenceService", "liveAlarms is empty — alarms not yet loaded from Firebase")
             return
         }
+        checkSpecificAlarms(location, liveAlarms)
+    }
 
+    /**
+     * Core geofence evaluation loop. Shared by:
+     *  - checkGeofences()     -> called from the location callback for all alarms (main thread)
+     *  - subscribeToAlarms()  -> called immediately for newly activated alarms via
+     *                           withContext(Dispatchers.Main), so a user already inside a
+     *                           geofence doesn't have to move (or restart the app) before
+     *                           the alarm sounds.
+     *
+     * Must always be called on the main thread — drives NotificationManager, MediaPlayer,
+     * and Vibrator which all require it.
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun checkSpecificAlarms(location: Location, alarmsToCheck: List<GeoAlarm>) {
         val userLatLng = LatLng(location.latitude, location.longitude)
         val now = LocalDateTime.now()
         val currentTime = LocalTime.now()
 
-        liveAlarms.forEach { alarm ->
+        alarmsToCheck.forEach { alarm ->
             Log.d("GeofenceService", "Checking alarm: ${alarm.id} name=${alarm.name} active=${alarm.active}")
             if (!alarm.active) {
                 Log.d("GeofenceService", "Skipping alarm ${alarm.name} — not active")
-
                 return@forEach
             }
             if (alarm.startTime != null && alarm.endTime != null) {
