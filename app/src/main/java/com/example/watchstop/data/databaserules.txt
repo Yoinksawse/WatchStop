@@ -150,7 +150,15 @@
         }
       }
     },
-
+		"userNotifications": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "auth != null",
+        "$notificationId": {
+          ".write": "auth != null && ($uid === auth.uid || auth != null)"
+        }
+      }
+    },
     "groupLocations": {
       "$groupId": {
         ".read": "auth != null && root.child('groups').child($groupId).child('memberIds').child(auth.uid).exists()",
