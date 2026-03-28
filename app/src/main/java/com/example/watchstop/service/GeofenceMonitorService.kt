@@ -40,7 +40,7 @@ import java.time.LocalTime
 class GeofenceMonitorService : Service() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
-    private lateinit var locationCallback: LocationCallback
+    private var locationCallback: LocationCallback? = null
     private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -124,7 +124,7 @@ class GeofenceMonitorService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        fusedLocationClient.removeLocationUpdates(locationCallback)
+        locationCallback?.let { fusedLocationClient.removeLocationUpdates(it) }
         stopMediaPlayerSafely()
         vibrator?.cancel()
         volumeEscalationRunnable?.let { handler.removeCallbacks(it) }
@@ -133,6 +133,11 @@ class GeofenceMonitorService : Service() {
         isLocationUpdatesStarted = false
         isSubscribedToAlarms = false
         serviceScope.cancel()
+
+        val restartIntent = Intent(this, ServiceRestartReceiver::class.java).apply {
+            action = "com.example.watchstop.RESTART_SERVICE"
+        }
+        sendBroadcast(restartIntent)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -163,14 +168,21 @@ class GeofenceMonitorService : Service() {
     // ================== Firebase Alarm Subscription ======================
 
     private fun subscribeToAlarms() {
-        val uid = FirebaseRepository.currentUid ?: return
-
-        // Cancel any stale job before launching a new one to avoid duplicate listeners
-        // accumulating across repeated restarts.
         alarmSubscriptionJob?.cancel()
         isSubscribedToAlarms = false
 
         alarmSubscriptionJob = serviceScope.launch {
+            // Wait up to 10s for Firebase auth to restore after a sticky restart
+            var retries = 0
+            while (FirebaseRepository.currentUid == null && retries < 10) {
+                delay(1_000)
+                retries++
+            }
+            val uid = FirebaseRepository.currentUid ?: run {
+                Log.e("GeofenceService", "UID still null after retries — cannot subscribe")
+                return@launch
+            }
+
             isSubscribedToAlarms = true
             try {
                 FirebaseRepository.observeGeoAlarms(uid).collect { alarms ->
@@ -178,11 +190,10 @@ class GeofenceMonitorService : Service() {
                     Log.d("GeofenceService", "Alarms updated: ${alarms.size}")
                 }
             } catch (e: CancellationException) {
-                throw e // Normal cancellation — rethrow, don't log as error
+                throw e
             } catch (e: Exception) {
                 Log.e("GeofenceService", "Alarm subscription died unexpectedly", e)
             } finally {
-                // Mark unsubscribed so the watchdog knows to revive it
                 isSubscribedToAlarms = false
                 Log.w("GeofenceService", "Alarm subscription ended — watchdog will revive")
             }
@@ -192,13 +203,7 @@ class GeofenceMonitorService : Service() {
     // ======================= Location Updates ===========================
 
     private fun startLocationUpdates() {
-        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5_000)
-            .setMinUpdateIntervalMillis(MIN_LOCATION_UPDATE_TIME_INTERVAL)
-            // adding distance constraint helps location requests survive Doze mode
-            // better than a time-only constraint, which Android throttles aggressively when idle.
-            .setMinUpdateDistanceMeters(5f)
-            .build()
-
+        // Always create a fresh callback — on sticky restart the old one is gone
         locationCallback = object : LocationCallback() {
             @RequiresApi(Build.VERSION_CODES.O)
             override fun onLocationResult(result: LocationResult) {
@@ -208,24 +213,23 @@ class GeofenceMonitorService : Service() {
                     checkGroupGeofencesAndNotify(location)
                 }
             }
-
-            // detect when the OS pauses location delivery (Doze / GPS off) and flag it
-            // so the watchdog can re-request updates on the next tick.
             override fun onLocationAvailability(availability: LocationAvailability) {
+                isLocationUpdatesStarted = availability.isLocationAvailable
                 if (!availability.isLocationAvailable) {
                     Log.w("GeofenceService", "Location unavailable — Doze or GPS off")
-                    isLocationUpdatesStarted = false
-                } else {
-                    isLocationUpdatesStarted = true
                 }
             }
         }
 
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5_000)
+            .setMinUpdateIntervalMillis(MIN_LOCATION_UPDATE_TIME_INTERVAL)
+            .setMinUpdateDistanceMeters(0f)   // <-- Remove distance filter; stationary phones need updates too
+            .build()
+
         try {
             fusedLocationClient.requestLocationUpdates(
-                locationRequest, locationCallback, Looper.getMainLooper())
+                locationRequest, locationCallback!!, Looper.getMainLooper())
             isLocationUpdatesStarted = true
-            Log.d("GeofenceService", "Location updates started")
         } catch (e: SecurityException) {
             Log.e("GeofenceService", "Location permission missing", e)
             isLocationUpdatesStarted = false

@@ -101,6 +101,7 @@ class MainActivity : AppCompatActivity() {
 
         // Request battery optimization exemption so service isn't deferred
         requestBatteryOptimizationExemption()
+        openOemBatterySettings()
 
         // Request notification permission before setContent
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -200,6 +201,39 @@ class MainActivity : AppCompatActivity() {
                 }
                 startActivity(intent)
             }
+        }
+    }
+
+    private fun openOemBatterySettings() {
+        val prefs = getSharedPreferences("WatchStopUserPrefs", MODE_PRIVATE)
+        if (prefs.getBoolean("oem_battery_prompted", false)) return
+
+        val oemIntents = listOf(
+            // Samsung
+            Intent().setComponent(android.content.ComponentName(
+                "com.samsung.android.lool",
+                "com.samsung.android.sm.battery.ui.BatteryActivity")),
+            // Xiaomi
+            Intent().setComponent(android.content.ComponentName(
+                "com.miui.powerkeeper",
+                "com.miui.powerkeeper.ui.HiddenAppsContainerManagementActivity")),
+            // Oppo / Realme
+            Intent().setComponent(android.content.ComponentName(
+                "com.coloros.safecenter",
+                "com.coloros.safecenter.permission.startup.FakeActivity")),
+            // Huawei
+            Intent().setComponent(android.content.ComponentName(
+                "com.huawei.systemmanager",
+                "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity")),
+            // Generic fallback
+            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+        )
+        for (intent in oemIntents) {
+            try {
+                startActivity(intent)
+                prefs.edit { putBoolean("oem_battery_prompted", true) }
+                return
+            } catch (_: Exception) {}
         }
     }
 }

@@ -14,6 +14,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-->somehow fixes geofencemonitorservice not running </!-->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+
 
 
     <application
@@ -38,7 +40,16 @@
             android:foregroundServiceType="location"
             android:stopWithTask="false" />
         <receiver android:name=".service.StopAlarmReceiver" />
-
+        <receiver
+            android:name=".service.ServiceRestartReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="com.example.watchstop.RESTART_SERVICE"/>
+            </intent-filter>
+        </receiver>
 
         <activity
             android:name=".activities.MainActivity"
