@@ -84,6 +84,10 @@ fun OnboardingReactive(
 ) {
     val items = listOf(
         OnboardingItem(
+            "Please ensure a strong cellular/WiFi connection (preferably GPS as well) for the app to function at its peak!"
+        ),
+
+        OnboardingItem(
             "Welcome to WatchStop!\n\nA multi-functional location services app designed to help you navigate, track, and coordinate with ease.",
             R.drawable.onboarding_watchstoplogopic
         ),
