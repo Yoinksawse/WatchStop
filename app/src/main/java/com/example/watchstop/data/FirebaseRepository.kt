@@ -43,7 +43,7 @@ object FirebaseRepository {
     private fun ensureAuth(): String =
         currentUid ?: throw IllegalStateException("Not authenticated")
 
-    // ============================= Auth =================================
+    // ============================Auth =================================
     suspend fun signIn(email: String, password: String): FirebaseUser {
         val result = auth.signInWithEmailAndPassword(email, password).await()
         return result.user ?: error("Sign-in returned null user")
@@ -69,7 +69,7 @@ object FirebaseRepository {
 
     fun signOut() = auth.signOut()
 
-    // =========================== User Profile ===========================
+    // ==========================User Profile ===========================
 
     suspend fun fetchUserProfile(uid: String): UserProfileData? =
         db.child("users").child(uid).get().await().toUserProfileData()
@@ -98,37 +98,33 @@ object FirebaseRepository {
     suspend fun getUsername(uid: String): String =
         db.child("uids").child(uid).get().await().getValue(String::class.java) ?: "Unknown"
 
-    // ============================= Groups ===============================
+    // ============================Groups ===============================
 
     /**
-     * Save a NEW group only. groupId must be null — Firebase generates the key.
+     * Save a NEW group only. groupId must be null; Firebase generates the key.
      * Never call this to update an existing group; use updateGroupMetadata instead.
      */
     @RequiresApi(Build.VERSION_CODES.O)
     suspend fun saveGroup(group: GroupEntry, groupId: String? = null): String {
-        Log.d("saveGroup", "entered — currentUid=$currentUid, title=${group.title}")
+        Log.d("saveGroup", "entered; currentUid=$currentUid, title=${group.title}")
         ensureAuth()
 
         val id = groupId ?: db.child("groups").push().key
         ?: error("Could not generate group key")
 
         val updates = mutableMapOf<String, Any?>(
-            "groups/$id/title"                  to group.title,
-            "groups/$id/description"            to group.description,
-            "groups/$id/eventDateTimeEpoch"     to group.eventDateTime
-                .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-            "groups/$id/memberRoles"            to group.memberRoles.mapValues { it.value.name },
+            "groups/$id/title" to group.title,
+            "groups/$id/description" to group.description,
+            "groups/$id/eventDateTimeEpoch" to group.eventDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+            "groups/$id/memberRoles" to group.memberRoles.mapValues { it.value.name },
             "groups/$id/locationSharingEnabled" to group.locationSharingEnabled,
-            "groups/$id/canToggleSharing"       to group.canToggleSharing,
-            "groups/$id/tripStatus"             to group.tripStatus.mapValues { it.value.name },
-            "groups/$id/adminApplications"      to group.adminApplications.associateWith { true },
-            "groups/$id/adminApplicationVotes"  to group.adminApplicationVotes
-                .mapValues { it.value.associateWith { true } },
-            "groups/$id/votesToRemoveAdmin"     to group.votesToRemoveAdmin
-                .mapValues { it.value.associateWith { true } },
-            "groups/$id/memberCount"            to group.groupMemberNames.size,
-            "groups/$id/voteCountsToRemoveAdmin" to group.voteCountsToRemoveAdmin
-                .takeIf { it.isNotEmpty() }
+            "groups/$id/canToggleSharing" to group.canToggleSharing,
+            "groups/$id/tripStatus" to group.tripStatus.mapValues { it.value.name },
+            "groups/$id/adminApplications" to group.adminApplications.associateWith { true },
+            "groups/$id/adminApplicationVotes" to group.adminApplicationVotes.mapValues { it.value.associateWith { true } },
+            "groups/$id/votesToRemoveAdmin" to group.votesToRemoveAdmin.mapValues { it.value.associateWith { true } },
+            "groups/$id/memberCount" to group.groupMemberNames.size,
+            "groups/$id/voteCountsToRemoveAdmin" to group.voteCountsToRemoveAdmin.takeIf { it.isNotEmpty() }
         )
 
         for (uid in group.groupMemberNames) {
@@ -149,7 +145,7 @@ object FirebaseRepository {
             val gf = group.geofence!!
             val groupGeofenceId = "group_${id}_${System.currentTimeMillis()}"
             updates["groups/$id/geofence"] = mapOf(
-                "id" to groupGeofenceId,  // Use the group-specific copy ID
+                "id" to groupGeofenceId,  // use group-specific copy ID
                 "name" to gf.name,
                 "center" to mapOf("lat" to gf.center.latitude, "lng" to gf.center.longitude),
                 "typeId" to gf.typeId,
@@ -168,14 +164,14 @@ object FirebaseRepository {
      * Update only the metadata fields of an existing group.
      *
      * [explicitlyRemovedMembers] is the set of UIDs the admin explicitly kicked via the UI.
-     * We ONLY remove those — we never diff against live Firebase state. This prevents the
+     * We ONLY remove those; we never diff against live Firebase state. This prevents the
      * bug where a member who accepted an invitation between the admin opening the screen and
      * pressing Save gets incorrectly evicted.
      *
      * Uses groupRef.updateChildren with RELATIVE paths so the root group .write rule is
      * evaluated against the group node (where memberRoles exists), not the database root.
      *
-     * pendingInvitations is never touched — managed exclusively by inviteToGroup /
+     * pendingInvitations is never touched; managed exclusively by inviteToGroup /
      * cancelInvitation.
      */
     @RequiresApi(Build.VERSION_CODES.O)
@@ -191,15 +187,11 @@ object FirebaseRepository {
         val updates = mutableMapOf<String, Any?>(
             "title" to group.title,
             "description" to group.description,
-            "eventDateTimeEpoch" to group.eventDateTime
-                .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+            "eventDateTimeEpoch" to group.eventDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
             "adminApplications" to group.adminApplications.associateWith { true },
-            "adminApplicationVotes" to group.adminApplicationVotes
-                .mapValues { it.value.associateWith { true } },
-            "votesToRemoveAdmin" to group.votesToRemoveAdmin
-                .mapValues { it.value.associateWith { true } },
-            // keep memberCount in sync whenever metadata is saved
-            "memberCount"           to group.groupMemberNames.size,
+            "adminApplicationVotes" to group.adminApplicationVotes.mapValues { it.value.associateWith { true } },
+            "votesToRemoveAdmin" to group.votesToRemoveAdmin.mapValues { it.value.associateWith { true } },
+            "memberCount" to group.groupMemberNames.size,
             "geofence" to group.geofence?.let { gf ->
                 mapOf(
                     "id" to gf.id,
@@ -456,7 +448,7 @@ object FirebaseRepository {
         awaitClose { ref.removeEventListener(listener) }
     }
 
-    // ============================ Notifications =========================
+    // ===========================Notifications =========================
 
     private fun observeUserNotifications(uid: String): Flow<List<NotificationItem>> = callbackFlow {
         if (uid.isEmpty()) { trySend(emptyList()); awaitClose {}; return@callbackFlow }
@@ -466,15 +458,15 @@ object FirebaseRepository {
                 val list = snapshot.children.mapNotNull { child ->
                     when (child.child("type").getValue(String::class.java)) {
                         "locationForced" -> NotificationItem.LocationForced(
-                            groupId        = child.child("groupId").getValue(String::class.java) ?: return@mapNotNull null,
-                            groupTitle     = child.child("groupTitle").getValue(String::class.java) ?: "",
-                            forcedByName   = child.child("forcedByName").getValue(String::class.java) ?: "An admin",
+                            groupId = child.child("groupId").getValue(String::class.java) ?: return@mapNotNull null,
+                            groupTitle = child.child("groupTitle").getValue(String::class.java) ?: "",
+                            forcedByName = child.child("forcedByName").getValue(String::class.java) ?: "An admin",
                             notificationId = child.child("notificationId").getValue(String::class.java) ?: return@mapNotNull null
                         )
                         "demoted" -> NotificationItem.Demoted(
-                            groupId        = child.child("groupId").getValue(String::class.java) ?: return@mapNotNull null,
-                            groupTitle     = child.child("groupTitle").getValue(String::class.java) ?: "",
-                            demotedByName  = child.child("demotedByName").getValue(String::class.java) ?: "An admin",
+                            groupId = child.child("groupId").getValue(String::class.java) ?: return@mapNotNull null,
+                            groupTitle = child.child("groupTitle").getValue(String::class.java) ?: "",
+                            demotedByName = child.child("demotedByName").getValue(String::class.java) ?: "An admin",
                             notificationId = child.child("notificationId").getValue(String::class.java) ?: return@mapNotNull null
                         )
                         else -> null
@@ -524,7 +516,7 @@ object FirebaseRepository {
         }
     }
 
-    //  ========================= Group Actions============================
+    //  ========================Group Actions============================
 
     suspend fun inviteToGroup(groupId: String, targetUid: String) {
         ensureAuth()
@@ -542,21 +534,20 @@ object FirebaseRepository {
         snap.toGroupEntry() ?: throw IllegalStateException("Group not found")
 
         val updates = mapOf<String, Any?>(
-            "groups/$groupId/memberIds/$uid"              to true,
-            "groups/$groupId/pendingInvitations/$uid"     to null,
-            "groups/$groupId/memberRoles/$uid"            to GroupRole.MEMBER.name,
+            "groups/$groupId/memberIds/$uid" to true,
+            "groups/$groupId/pendingInvitations/$uid" to null,
+            "groups/$groupId/memberRoles/$uid" to GroupRole.MEMBER.name,
             "groups/$groupId/locationSharingEnabled/$uid" to false,
-            "groups/$groupId/canToggleSharing/$uid"       to false,
-            "groups/$groupId/tripStatus/$uid"             to TripStatus.INACTIVE.name,
-            "users/$uid/groups/$groupId"                  to true,
-            "users/$uid/invitations/$groupId"             to null
+            "groups/$groupId/canToggleSharing/$uid" to false,
+            "groups/$groupId/tripStatus/$uid" to TripStatus.INACTIVE.name,
+            "users/$uid/groups/$groupId" to true,
+            "users/$uid/invitations/$groupId" to null
         )
         db.updateChildren(updates).await()
 
         // increment memberCount AFTER the member is in memberIds
         // (rule allows writes from current members and pending-invitation holders)
-        db.child("groups").child(groupId).child("memberCount")
-            .incrementInt()  // uses the transaction helper above
+        db.child("groups").child(groupId).child("memberCount").incrementInt()
     }
 
 
@@ -585,19 +576,16 @@ object FirebaseRepository {
             .child("adminApplications").child(uid).setValue(true).await()
     }
 
-    /**
-     * Vote to approve an admin application. Promotes if threshold met or voter is SuperAdmin.
-     *
-     * Uses groupRef.updateChildren with RELATIVE paths for the promotion step so the
-     * root group .write rule is evaluated against the correct group node (where memberRoles
-     * exists), not the database root.
-     */
+    // Vote to approve an admin application. Promotes if threshold met or voter is SuperAdmin
+    // Uses groupRef.updateChildren with RELATIVE paths for the promotion step so the
+    // root group .write rule is evaluated against the correct group node (where memberRoles
+    // exists), not the database root.
     @RequiresApi(Build.VERSION_CODES.O)
     suspend fun voteForAdminApplication(groupId: String, applicantUid: String, voterUid: String) {
         ensureAuth()
         val groupRef = db.child("groups").child(groupId)
 
-        // 1. Write only the voter's own UID — satisfies $voterUid === auth.uid rule
+        // 1. Write only the voter's own UID; satisfies $voterUid === auth.uid rule
         groupRef
             .child("adminApplicationVotes")
             .child(applicantUid)
@@ -623,9 +611,9 @@ object FirebaseRepository {
         // 3. Promote immediately if super admin voted, or threshold met (majority of non-applicant members)
         if (isSuperAdmin || voteCount > ((totalMembers - 1) / 2)) {
             val promoteUpdates = mapOf<String, Any?>(
-                "memberRoles/$applicantUid"           to GroupRole.ADMIN.name,
-                "canToggleSharing/$applicantUid"      to true,
-                "adminApplications/$applicantUid"     to null,
+                "memberRoles/$applicantUid" to GroupRole.ADMIN.name,
+                "canToggleSharing/$applicantUid" to true,
+                "adminApplications/$applicantUid" to null,
                 "adminApplicationVotes/$applicantUid" to null
             )
             groupRef.updateChildren(promoteUpdates).await()
@@ -647,13 +635,13 @@ object FirebaseRepository {
         if (entry.isSuperAdmin(targetUid))
             throw IllegalStateException("Cannot vote to remove a Super Admin")
 
-        // ============== SuperAdmin: immediate demotion =================
+        // =============SuperAdmin: immediate demotion =================
         if (entry.isSuperAdmin(voterUid)) {
             val updates = mapOf<String, Any?>(
-                "memberRoles/$targetUid"               to GroupRole.MEMBER.name,
-                "canToggleSharing/$targetUid"          to false,
-                "votesToRemoveAdmin/$targetUid"        to null,
-                "voteCountsToRemoveAdmin/$targetUid"   to null
+                "memberRoles/$targetUid" to GroupRole.MEMBER.name,
+                "canToggleSharing/$targetUid" to false,
+                "votesToRemoveAdmin/$targetUid" to null,
+                "voteCountsToRemoveAdmin/$targetUid" to null
             )
             groupRef.updateChildren(updates).await()
 
@@ -664,13 +652,13 @@ object FirebaseRepository {
             val notificationId = "demoted_${groupId}_${targetUid}_${System.currentTimeMillis()}"
             db.child("userNotifications").child(targetUid).child(notificationId).setValue(
                 mapOf(
-                    "type"           to "demoted",
-                    "groupId"        to groupId,
-                    "groupTitle"     to groupTitle,
-                    "demotedByUid"   to voterUid,
-                    "demotedByName"  to demotedByName,
+                    "type" to "demoted",
+                    "groupId" to groupId,
+                    "groupTitle" to groupTitle,
+                    "demotedByUid" to voterUid,
+                    "demotedByName" to demotedByName,
                     "notificationId" to notificationId,
-                    "timestamp"      to System.currentTimeMillis()
+                    "timestamp" to System.currentTimeMillis()
                 )
             ).await()
 
@@ -678,7 +666,7 @@ object FirebaseRepository {
             return true
         }
 
-        // ======================= Regular-member path ========================
+        // ======================Regular-member path ========================
 
         // Step 1: Cast vote once (rule enforces !data.exists() → safe from double-vote)
         try {
@@ -694,17 +682,17 @@ object FirebaseRepository {
             return false
         }
 
-        // Step 2 — Atomically increment the counter in the CORRECT path
+        // Step 2; Atomically increment the counter in the CORRECT path
         //          (voteCountsToRemoveAdmin, NOT votesToRemoveAdmin)
         val newCount = groupRef
             .child("voteCountsToRemoveAdmin")
             .child(targetUid)
-            .incrementInt()   // transaction helper — race-safe
+            .incrementInt()   // transaction helper; race-safe
 
         Log.d("FirebaseRepository",
             "Vote by $voterUid against $targetUid registered. Count now: $newCount")
 
-        // Step 3 — Fetch fresh state and evaluate threshold
+        // Step 3; Fetch fresh state and evaluate threshold
         val freshSnap = groupRef.get().await()
         val memberCount = freshSnap.child("memberCount").getValue(Int::class.java)
             ?: freshSnap.child("memberIds").childrenCount.toInt()
@@ -713,12 +701,12 @@ object FirebaseRepository {
             "Threshold check: $newCount votes / $memberCount members")
 
         if (newCount > (memberCount / 2)) {
-            Log.d("FirebaseRepository", "Threshold met — demoting $targetUid")
+            Log.d("FirebaseRepository", "Threshold met; demoting $targetUid")
 
             val demoteUpdates = mapOf<String, Any?>(
-                "memberRoles/$targetUid"             to GroupRole.MEMBER.name,
-                "canToggleSharing/$targetUid"        to false,
-                "votesToRemoveAdmin/$targetUid"      to null,
+                "memberRoles/$targetUid" to GroupRole.MEMBER.name,
+                "canToggleSharing/$targetUid" to false,
+                "votesToRemoveAdmin/$targetUid" to null,
                 "voteCountsToRemoveAdmin/$targetUid" to null
             )
             groupRef.updateChildren(demoteUpdates).await()
@@ -729,13 +717,13 @@ object FirebaseRepository {
             val notificationId = "demoted_${groupId}_${targetUid}_${System.currentTimeMillis()}"
             db.child("userNotifications").child(targetUid).child(notificationId).setValue(
                 mapOf(
-                    "type"           to "demoted",
-                    "groupId"        to groupId,
-                    "groupTitle"     to groupTitle,
-                    "demotedByUid"   to voterUid,
-                    "demotedByName"  to "group vote",
+                    "type" to "demoted",
+                    "groupId" to groupId,
+                    "groupTitle" to groupTitle,
+                    "demotedByUid" to voterUid,
+                    "demotedByName" to "group vote",
                     "notificationId" to notificationId,
-                    "timestamp"      to System.currentTimeMillis()
+                    "timestamp" to System.currentTimeMillis()
                 )
             ).await()
 
@@ -766,8 +754,8 @@ object FirebaseRepository {
     /** Set trip status. TRAVELLING auto-enables sharing; ARRIVED auto-stops it. */
     suspend fun setTripStatus(groupId: String, uid: String, status: TripStatus) {
         ensureAuth()
-        // tripStatus/$uid: rule allows $uid === auth.uid — safe for any member.
-        // locationSharingEnabled/$uid when TRAVELLING: rule allows newData.val() === true — safe.
+        // tripStatus/$uid: rule allows $uid === auth.uid; safe for any member.
+        // locationSharingEnabled/$uid when TRAVELLING: rule allows newData.val() === true; safe.
         // locationSharingEnabled/$uid when ARRIVED (setting false): rule allows
         //   canToggleSharing === true OR admin. If canToggleSharing is false for this member,
         //   the ARRIVED case would be denied. We skip writing false in that case since
@@ -795,7 +783,7 @@ object FirebaseRepository {
         val groupRef = db.child("groups").child(groupId)
         val updates = mapOf<String, Any?>(
             "locationSharingEnabled/$targetUid" to true,
-            "canToggleSharing/$targetUid"       to false
+            "canToggleSharing/$targetUid" to false
         )
         groupRef.updateChildren(updates).await()
 
@@ -805,13 +793,13 @@ object FirebaseRepository {
         val notificationId = "forceShare_${groupId}_${targetUid}_${System.currentTimeMillis()}"
         db.child("userNotifications").child(targetUid).child(notificationId).setValue(
             mapOf(
-                "type"           to "locationForced",
-                "groupId"        to groupId,
-                "groupTitle"     to groupTitle,
-                "forcedByUid"    to callerUid,
-                "forcedByName"   to callerName,
+                "type" to "locationForced",
+                "groupId" to groupId,
+                "groupTitle" to groupTitle,
+                "forcedByUid" to callerUid,
+                "forcedByName" to callerName,
                 "notificationId" to notificationId,
-                "timestamp"      to System.currentTimeMillis()
+                "timestamp" to System.currentTimeMillis()
             )
         ).await()
         Log.d("FirebaseRepository", "forceLocationSharingOn: locked $targetUid in $groupId, notified")
@@ -849,7 +837,7 @@ object FirebaseRepository {
         }
     }
 
-    // ======================== Live Location =============================
+    // =======================Live Location =============================
 
     fun pushLocation(groupId: String, uid: String, lat: Double, lng: Double) {
         if (isGuest()) return
@@ -878,7 +866,7 @@ object FirebaseRepository {
         awaitClose { ref.removeEventListener(listener) }
     }
 
-    // =========================== Geo Alarms =============================
+    // ==========================Geo Alarms =============================
 
     fun observeGeoAlarms(uid: String): Flow<List<GeoAlarm>> = callbackFlow {
         if (uid.isEmpty()) { trySend(emptyList()); close(); return@callbackFlow }
@@ -896,9 +884,7 @@ object FirebaseRepository {
         awaitClose { ref.removeEventListener(listener) }
     }
 
-    /**
-     * Non-suspend version for use in services
-     */
+    //Non-suspend version for use in services
     fun deactivateGeoAlarms(
         database: DatabaseReference,
         uid: String,
@@ -972,7 +958,7 @@ object FirebaseRepository {
         db.child("geoAlarms").child(uid).child(alarmId).removeValue().await()
     }
 
-    // ======================== User Geofences ============================
+    // =======================User Geofences ============================
 
     suspend fun saveGeofence(uid: String, geofence: GeofenceArea) {
         // Determine type based on points - if points is empty, it's circular (typeId=1)
@@ -1070,7 +1056,7 @@ object FirebaseRepository {
             }
     }
 
-    // ============================ Group Geofence =========================
+    // ===========================Group Geofence =========================
     fun observeGroupGeofence(groupId: String): Flow<GeofenceArea?> = callbackFlow {
         val ref = db.child("groups").child(groupId).child("geofence")
         val listener = ref.addValueEventListener(object : ValueEventListener {
@@ -1087,7 +1073,7 @@ object FirebaseRepository {
 }
 
 
-// ==================== Notification Item Sealed Class =======================
+// ===================Notification Item Sealed Class =======================
 
 sealed class NotificationItem {
     data class Invitation(val groupId: String, val groupTitle: String) : NotificationItem()
@@ -1097,11 +1083,11 @@ sealed class NotificationItem {
     data class Demoted(val groupId: String, val groupTitle: String, val demotedByName: String, val notificationId: String) : NotificationItem()
 }
 
-// ============================== Data classes ================================
+// =============================Data classes ================================
 
 data class LatLngSnapshot(val lat: Double, val lng: Double)
 
-// ====================== Snapshot extension helpers ==========================
+// =====================Snapshot extension helpers ==========================
 
 private fun DataSnapshot.toUserProfileData(): UserProfileData? {
     val userName = child("userName").getValue(String::class.java) ?: return null
@@ -1256,20 +1242,16 @@ private fun DataSnapshot.toGeoAlarm(): GeoAlarm? {
         active = child("active").getValue(Boolean::class.java) ?: false,
         description = child("description").getValue(String::class.java) ?: "",
         geofenceId = child("geofenceId").getValue(String::class.java),
-        specificDate = child("specificDate").getValue(String::class.java)
-            ?.let { LocalDate.parse(it) },
-        dayOfWeek = child("dayOfWeek").getValue(String::class.java)
-            ?.let { DayOfWeek.valueOf(it) },
-        startTime = child("startTime").getValue(String::class.java)
-            ?.let { LocalTime.parse(it) },
-        endTime = child("endTime").getValue(String::class.java)
-            ?.let { LocalTime.parse(it) }
+        specificDate = child("specificDate").getValue(String::class.java)?.let { LocalDate.parse(it) },
+        dayOfWeek = child("dayOfWeek").getValue(String::class.java)?.let { DayOfWeek.valueOf(it) },
+        startTime = child("startTime").getValue(String::class.java)?.let { LocalTime.parse(it) },
+        endTime = child("endTime").getValue(String::class.java)?.let { LocalTime.parse(it) }
     )
 }
 
 /**
  * Atomically increments an Int node and returns the new value.
- * Safe under concurrent writes — uses Firebase RTDB runTransaction internally.
+ * Safe under concurrent writes; uses Firebase RTDB runTransaction internally.
  */
 private suspend fun DatabaseReference.incrementInt(): Int =
     suspendCancellableCoroutine { cont ->
@@ -1289,6 +1271,6 @@ private suspend fun DatabaseReference.incrementInt(): Int =
                 ) { cause, _, _ -> onCancellation(cause) }
             }
 
-            fun onCancellation(cause: Throwable) {} //TODO: idk what this is
+            fun onCancellation(cause: Throwable) {}
         })
     }

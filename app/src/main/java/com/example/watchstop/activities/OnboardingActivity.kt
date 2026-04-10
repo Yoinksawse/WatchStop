@@ -126,7 +126,6 @@ fun OnboardingReactive(
                 x = Random.nextFloat() * 1080f,
                 y = Random.nextFloat() * 1920f,
                 size = Random.nextFloat() * 25f + 15f,
-                rotation = Random.nextFloat() * 360f,
                 alpha = Random.nextFloat() * 0.5f + 0.3f,
                 color = Color(
                     Random.nextFloat(),
@@ -159,10 +158,6 @@ fun OnboardingReactive(
     shapes.forEach { shape ->
         LaunchedEffect(shape) {
             while (true) {
-                shape.rotationAnim.animateTo(
-                    targetValue = shape.rotationAnim.value + 360f,
-                    animationSpec = tween(4000, easing = LinearEasing)
-                )
                 shape.alphaAnim.animateTo(
                     targetValue = 0.3f + Random.nextFloat() * 0.5f,
                     animationSpec = tween(4000, easing = LinearEasing)
@@ -192,16 +187,11 @@ fun OnboardingReactive(
                 if (shape.x > size.width) shape.x = 0f
                 if (shape.y > size.height) shape.y = 0f
 
-                rotate(
-                    shape.rotationAnim.value,
-                    pivot = Offset(shape.x, shape.y)
-                ) {
-                    drawCircle(
-                        color = shape.color.copy(alpha = shape.alphaAnim.value),
-                        radius = shape.sizeAnim.value,
-                        center = Offset(shape.x, shape.y)
-                    )
-                }
+                drawCircle(
+                    color = shape.color.copy(alpha = shape.alphaAnim.value),
+                    radius = shape.sizeAnim.value,
+                    center = Offset(shape.x, shape.y)
+                )
             }
         }
 

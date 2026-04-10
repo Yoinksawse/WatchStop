@@ -109,8 +109,7 @@ fun checkPointInPolygon(point: LatLng, polygon: List<LatLng>): Boolean {
         val p2 = polygon[(i + 1) % polygon.size]
         if (((p1.latitude > point.latitude) != (p2.latitude > point.latitude)) &&
             (point.longitude < (p2.longitude - p1.longitude) *
-                    (point.latitude - p1.latitude) /
-                    (p2.latitude - p1.latitude) + p1.longitude)
+                    (point.latitude - p1.latitude) / (p2.latitude - p1.latitude) + p1.longitude)
         ) intersectCount++
     }
     return intersectCount % 2 != 0

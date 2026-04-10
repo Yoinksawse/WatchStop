@@ -46,7 +46,7 @@ class GeofenceMonitorService : Service() {
     private val handler = Handler(Looper.getMainLooper())
 
     // var instead of val so it can be recreated after the OS kills the process and
-    // START_STICKY restarts the service — the old scope is cancelled on kill, which leaves
+    // START_STICKY restarts the service; the old scope is cancelled on kill, which leaves
     // liveAlarms empty and subscribeToAlarms() effectively dead forever.
     private var serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -70,16 +70,12 @@ class GeofenceMonitorService : Service() {
     @Volatile private var isLocationUpdatesStarted = false
     private var alarmSubscriptionJob: Job? = null
 
-    // ============================== Watchdog ============================
-
-    /**
-     * Fires every 60 s. Revives the Firebase subscription or location updates if they
-     * have silently died due to Doze mode, a network drop, or a START_STICKY restart that
-     * skipped onCreate() and left the service in a half-initialised state.
-     */
+    //=============================Watchdog============================
+    /* fires every 60s to revive the Firebase subscription/location updates.
+     solves shut down due to Doze mode/network drop/START_STICKY restart that skipped onCreate and did not begin location updates*/
     private val watchdogRunnable = object : Runnable {
         override fun run() {
-            Log.d("GeofenceService", "Watchdog tick — subscribed=$isSubscribedToAlarms, alarms=${liveAlarms.size}, location=$isLocationUpdatesStarted")
+            Log.d("GeofenceService", "Watchdog tick; subscribed=$isSubscribedToAlarms, alarms=${liveAlarms.size}, location=$isLocationUpdatesStarted")
 
             if (!serviceScope.isActive) {
                 Log.w("GeofenceService", "Watchdog: scope cancelled, recreating")
@@ -100,7 +96,7 @@ class GeofenceMonitorService : Service() {
         }
     }
 
-    // ========================== Lifecycle ===============================
+    //=========================Lifecycle===============================
 
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate() {
@@ -128,7 +124,7 @@ class GeofenceMonitorService : Service() {
         stopMediaPlayerSafely()
         vibrator?.cancel()
         volumeEscalationRunnable?.let { handler.removeCallbacks(it) }
-        // Remove watchdog on proper service destroy
+        //remove watchdog on proper service destroy
         handler.removeCallbacks(watchdogRunnable)
         isLocationUpdatesStarted = false
         isSubscribedToAlarms = false
@@ -146,9 +142,8 @@ class GeofenceMonitorService : Service() {
         if (intent?.action == "ACTION_STOP_ALARM") {
             forceStopAlarm()
         } else {
-            // When Android kills the process and START_STICKY restarts it, onCreate() is
-            // NOT called again — only onStartCommand() is, with a null intent. The old
-            // serviceScope is cancelled and liveAlarms is empty. Revive everything here.
+            // when Android kills the service and START_STICKY restarts it, this is
+            //called instead of OnCreate, with a null intent to restore everything
             if (!serviceScope.isActive) {
                 Log.w("GeofenceService", "onStartCommand: scope cancelled, recreating")
                 serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -165,7 +160,7 @@ class GeofenceMonitorService : Service() {
         return START_STICKY
     }
 
-    // ================== Firebase Alarm Subscription ======================
+    //=================Firebase Alarm Updating======================
 
     private fun subscribeToAlarms() {
         alarmSubscriptionJob?.cancel()
@@ -179,7 +174,7 @@ class GeofenceMonitorService : Service() {
                 retries++
             }
             val uid = FirebaseRepository.currentUid ?: run {
-                Log.e("GeofenceService", "UID still null after retries — cannot subscribe")
+                Log.e("GeofenceService", "UID still null after retries; cannot subscribe")
                 return@launch
             }
 
@@ -195,15 +190,15 @@ class GeofenceMonitorService : Service() {
                 Log.e("GeofenceService", "Alarm subscription died unexpectedly", e)
             } finally {
                 isSubscribedToAlarms = false
-                Log.w("GeofenceService", "Alarm subscription ended — watchdog will revive")
+                Log.w("GeofenceService", "Alarm subscription ended; watchdog will restart it")
             }
         }
     }
 
-    // ======================= Location Updates ===========================
+    //======================Location Updates===========================
 
     private fun startLocationUpdates() {
-        // Always create a fresh callback — on sticky restart the old one is gone
+        //create new callback, since on sticky restart the old one is gone
         locationCallback = object : LocationCallback() {
             @RequiresApi(Build.VERSION_CODES.O)
             override fun onLocationResult(result: LocationResult) {
@@ -216,14 +211,14 @@ class GeofenceMonitorService : Service() {
             override fun onLocationAvailability(availability: LocationAvailability) {
                 isLocationUpdatesStarted = availability.isLocationAvailable
                 if (!availability.isLocationAvailable) {
-                    Log.w("GeofenceService", "Location unavailable — Doze or GPS off")
+                    Log.w("GeofenceService", "Location unavailable; Doze or GPS off")
                 }
             }
         }
 
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5_000)
             .setMinUpdateIntervalMillis(MIN_LOCATION_UPDATE_TIME_INTERVAL)
-            .setMinUpdateDistanceMeters(0f)   // <-- Remove distance filter; stationary phones need updates too
+            .setMinUpdateDistanceMeters(0f)   //remove distance filter since stationary phones need updates also
             .build()
 
         try {
@@ -236,13 +231,13 @@ class GeofenceMonitorService : Service() {
         }
     }
 
-    // ======================= Geofence Checking ==========================
+    //======================Geofence Checking==========================
 
     @RequiresApi(Build.VERSION_CODES.O)
     private fun checkGeofences(location: Location) {
         Log.d("GeofenceService", "checkGeofences called. liveAlarms=${liveAlarms.size}, activeAlarms=$activeAlarms")
         if (liveAlarms.isEmpty()) {
-            Log.w("GeofenceService", "liveAlarms is empty — alarms not yet loaded from Firebase")
+            Log.w("GeofenceService", "liveAlarms is empty; alarms not yet loaded from Firebase")
             return
         }
 
@@ -253,7 +248,7 @@ class GeofenceMonitorService : Service() {
         liveAlarms.forEach { alarm ->
             Log.d("GeofenceService", "Checking alarm: ${alarm.id} name=${alarm.name} active=${alarm.active}")
             if (!alarm.active) {
-                Log.d("GeofenceService", "Skipping alarm ${alarm.name} — not active")
+                Log.d("GeofenceService", "Skipping alarm ${alarm.name}; not active")
 
                 return@forEach
             }
@@ -275,7 +270,7 @@ class GeofenceMonitorService : Service() {
 
             if (isInside && !activeAlarms.contains(alarm.id)) {
                 if (alarm.id in recentlyStoppedAlarms) {
-                    Log.d("GeofenceService", "Skipping alarm ${alarm.name} — recently stopped, waiting for Firebase confirmation")
+                    Log.d("GeofenceService", "Skipping alarm ${alarm.name}; recently stopped, waiting for Firebase confirmation")
                     return@forEach
                 }
                 activeAlarms.add(alarm.id)
@@ -289,7 +284,7 @@ class GeofenceMonitorService : Service() {
         }
     }
 
-    // =============== Group Geofence Arrival Detection =================
+    //==============Group Geofence Arrival Detection=================
 
     @RequiresApi(Build.VERSION_CODES.O)
     private fun checkGroupGeofencesAndNotify(location: Location) {
@@ -299,13 +294,13 @@ class GeofenceMonitorService : Service() {
 
         serviceScope.launch {
             db.child("users").child(uid).child("groups").get()
-                //.addOnFailureListener { Log.e("GeofenceService", "Failed to fetch user groups", it) }
+                //.addOnFailureListener { Log.e("GeofenceService", "failed to fetch user groups", it) }
                 .addOnSuccessListener { userGroupsSnap ->
                     userGroupsSnap.children.forEach { snap ->
                         val groupId = snap.key ?: return@forEach
 
                         db.child("groups").child(groupId).get()
-                            //.addOnFailureListener { Log.e("GeofenceService", "Failed to fetch group $groupId", it) }
+                            //.addOnFailureListener { Log.e("GeofenceService", "failde to fetch group $groupId", it) }
                             .addOnSuccessListener { groupSnap ->
                                 val geofence = parseGeofenceFromSnapshot(groupSnap) ?: return@addOnSuccessListener
                                 val arrivedSet = arrivedMembers.getOrPut(groupId) { mutableSetOf() }
@@ -325,7 +320,6 @@ class GeofenceMonitorService : Service() {
                                         }
 
                                         notifyUserOfArrival(groupId, groupTitle, tripStatus)
-                                        sendMemberArrivedNotification(groupId, groupTitle, uid)
                                         Log.i("GeofenceService", "User $uid arrived at geofence in group $groupId")
                                     }
                                     !isInside && uid in arrivedSet -> arrivedSet.remove(uid)
@@ -361,38 +355,6 @@ class GeofenceMonitorService : Service() {
         }
     }
 
-    private fun sendMemberArrivedNotification(groupId: String, groupTitle: String, memberId: String) {
-        serviceScope.launch {
-            try {
-                val memberName = FirebaseRepository.getUsername(memberId)
-                val notificationId = "arrival_${groupId}_${memberId}_${System.currentTimeMillis()}"
-
-                // Save notification to Firebase for all group members to see
-                val notificationData = mapOf(
-                    "type" to "memberArrived",
-                    "groupId" to groupId,
-                    "groupTitle" to groupTitle,
-                    "memberUid" to memberId,
-                    "memberName" to memberName,
-                    "notificationId" to notificationId,
-                    "timestamp" to System.currentTimeMillis()
-                )
-
-                FirebaseDatabase.getInstance().reference
-                    .child("notifications").child(groupId).child(notificationId)
-                    .setValue(notificationData)
-                    .addOnSuccessListener {
-                        Log.d("GeofenceService", "Member arrival notification saved to Firebase")
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e("GeofenceService", "Failed to save arrival notification: ${e.message}")
-                    }
-            } catch (e: Exception) {
-                Log.e("GeofenceService", "Error sending arrival notification", e)
-            }
-        }
-    }
-
     @RequiresApi(Build.VERSION_CODES.O)
     private fun notifyUserOfArrival(groupId: String, groupTitle: String, tripStatus: String?) {
         // Only show notification if user is on an active trip (TRAVELLING)
@@ -408,14 +370,7 @@ class GeofenceMonitorService : Service() {
                 .build()
 
             manager?.notify("arrival_$groupId".hashCode(), notification)
-
-            // Optional: Add a brief vibration to make it more noticeable
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator?.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator?.vibrate(500)
-            }
+            vibrator?.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
 
             Log.d("GeofenceService", "Notified user of arrival at group $groupTitle (trip active)")
         } else {
@@ -423,7 +378,7 @@ class GeofenceMonitorService : Service() {
         }
     }
 
-    // ================ Live Location Push to Groups ======================
+    //================Live Location Push to Groups======================
 
     private fun pushLiveLocationToGroups(location: Location) {
         val uid = FirebaseRepository.currentUid ?: return
@@ -453,7 +408,7 @@ class GeofenceMonitorService : Service() {
             }
     }
 
-    // ================== Alarm Audio / Vibration =========================
+    //=================Alarm Audio / Vibration=========================
 
     private fun triggerGeoAlarm(alarm: GeoAlarm) {
         // Always send individual notification for this alarm
@@ -675,7 +630,7 @@ class GeofenceMonitorService : Service() {
         }
     }
 
-    // ======================= Notifications ==============================
+    //=======================Notifications==============================
 
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

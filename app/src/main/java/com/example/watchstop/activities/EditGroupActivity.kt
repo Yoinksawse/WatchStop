@@ -152,7 +152,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
 
     // track members the admin explicitly removed via the Remove button.
     // updateGroupMetadata receives ONLY this set and nulls out exactly those UIDs.
-    // We never diff live Firebase vs local state — that was the root cause of the bug
+    // We never diff live Firebase vs local state; that was the root cause of the bug
     // where a member accepting an invitation got evicted when the admin pressed Save.
     val explicitlyRemovedMembers = remember { mutableStateOf(setOf<String>()) }
     val removedMemberNames = remember { mutableStateMapOf<String, String>() }
@@ -275,7 +275,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
             ) {
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // ==================== Edit Group Info Button =================
+                // ===================Edit Group Info Button =================
                 Button(
                     onClick = { showInfoDialog = true },
                     modifier = Modifier.fillMaxWidth(),
@@ -291,7 +291,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
 
                 HorizontalDivider()
 
-                // ==================== Add Member (Invite) ====================
+                // ===================Add Member (Invite) ====================
                 if (currentIsAdmin) {
                     Text("Invite Member", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
                         fontSize = MaterialTheme.typography.titleMedium.fontSize * X.value)
@@ -379,7 +379,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                     HorizontalDivider()
                 }
 
-                // ====================== Members Section ======================
+                // =====================Members Section ======================
                 Text("Members", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
                     fontSize = MaterialTheme.typography.titleMedium.fontSize * X.value)
                 memberNames.forEach { member ->
@@ -485,7 +485,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                     if (isTargetAdmin && currentIsSuperAdmin) {
                                         OutlinedButton(
                                             onClick = {
-                                                // Only update local state — Firebase write happens on Save
+                                                // Only update local state; Firebase write happens on Save
                                                 memberRoles[member] = GroupRole.MEMBER
                                                 canToggle[member] = false
                                             },
@@ -520,7 +520,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                     }
                 }
 
-                // ===================== Pending Removals ======================
+                // ====================Pending Removals ======================
                 if (explicitlyRemovedMembers.value.isNotEmpty()) {
                     HorizontalDivider()
                     Text(
@@ -585,7 +585,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                     }
                 }
 
-                // ================= pending Admin Applications ================
+                // ================pending Admin Applications ================
                 if (currentIsAdmin && adminApplications.isNotEmpty()) {
                     HorizontalDivider()
                     Text("Pending Admin Applications", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
@@ -646,7 +646,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                     }
                 }
 
-                // ================= Pending Invitations Section ===============
+                // ================Pending Invitations Section ===============
                 if (pendingInvitations.isNotEmpty()) {
                     HorizontalDivider()
                     Text("Pending Invitations", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
@@ -709,7 +709,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
 
                             // Create a copy of the geofence with a new group-specific ID
                             val selectedGeofence = when {
-                                // User picked a personal geofence from the dropdown — make a deep copy
+                                // User picked a personal geofence from the dropdown; make a deep copy
                                 selectedGeofenceId.isNotEmpty() && !isExistingGroupGeofence -> {
                                     UserGeofencesDatabase.getAllGeofences()
                                         .find { it.id == selectedGeofenceId }
@@ -719,7 +719,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
                                             originalGeofence.copy(id = groupGeofenceId, geoAlarmId = null)
                                         }
                                 }
-                                // Already a saved group geofence copy — preserve it as-is
+                                // Already a saved group geofence copy; preserve it as-is
                                 isExistingGroupGeofence -> groupSnapshot.geofence
                                 // No geofence selected
                                 else -> null
@@ -770,7 +770,7 @@ private fun EditGroupScreen(onFinish: () -> Unit) {
             }
         }
 
-        // ==================== Group Info Dialog ======================
+        // ===================Group Info Dialog ======================
         if (showInfoDialog) {
             val focusManager = LocalFocusManager.current
             val context = LocalContext.current

@@ -227,7 +227,7 @@ private fun GroupsTabContent(
         if (myGroups.isEmpty()) {
             item {
                 Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                    Text("No Groups yet — tap + to create one", color = Color.Gray,
+                    Text("No Groups yet; tap + to create one", color = Color.Gray,
                         fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                 }
             }
@@ -567,8 +567,8 @@ private fun GroupCreationDialog(
                 Text("Your role as creator:", style = MaterialTheme.typography.bodyMedium,
                     fontSize = MaterialTheme.typography.bodyMedium.fontSize * X.value)
                 listOf(
-                    GroupRole.SUPER_ADMIN to "Super Admin — highest authority",
-                    GroupRole.ADMIN to "Admin — can be voted out"
+                    GroupRole.SUPER_ADMIN to "Super Admin; highest authority",
+                    GroupRole.ADMIN to "Admin; can be voted out"
                 ).forEach { (role, description) ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,

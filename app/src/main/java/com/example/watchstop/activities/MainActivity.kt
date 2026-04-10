@@ -27,7 +27,7 @@ import com.example.watchstop.view.screens.MainScreen
 import com.example.watchstop.view.ui.theme.WatchStopTheme
 import kotlinx.coroutines.launch
 
-var debugOnboardingOn = false
+var debugOnboardingOn = true
 var X = mutableFloatStateOf(1.0f)
 
 class MainActivity : AppCompatActivity() {

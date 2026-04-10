@@ -68,7 +68,7 @@ fun GroupCard(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    // Current user's UID — read at composition, stable after login
+    // Current user's UID; read at composition, stable after login
     var demoteConfirmationText by remember { mutableStateOf("") }
     val currentUid = UserProfileObject.uid ?: ""
 
@@ -120,7 +120,7 @@ fun GroupCard(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
 
-                // ================== Title / Toggle Row ====================
+                // =================Title / Toggle Row ====================
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -255,7 +255,7 @@ fun GroupCard(
                     }
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // =============== Description (Expandable) =================
+                    // ==============Description (Expandable) =================
                     MiniHeader("Group/Event Description", secondaryText)
                     if (group.description.isNotBlank()) {
                         Box(
@@ -306,7 +306,7 @@ fun GroupCard(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // =========== Member List with Status Dashboard ===========
+                    // ==========Member List with Status Dashboard ===========
                     MiniHeader("Members", secondaryText)
                     group.groupMemberNames.forEach { memberUid ->
                         val memberRole = group.memberRoles[memberUid] ?: GroupRole.MEMBER
@@ -475,7 +475,7 @@ fun GroupCard(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // ================== Locations Section =====================
+                    // =================Locations Section =====================
                     MiniHeader("Locations", secondaryText)
 
                     val isSharing = group.locationSharingEnabled[currentUid] ?: false
@@ -615,7 +615,7 @@ fun GroupCard(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // =================== Management Section ===================
+                    // ==================Management Section ===================
                     MiniHeader("Management", secondaryText)
 
                     // Manage group (admins) or Apply for admin (members)
@@ -641,7 +641,7 @@ fun GroupCard(
                         )
                     }
 
-                    // ============ my pending application banner ===============
+                    // ===========my pending application banner ===============
                     if (group.adminApplications.contains(currentUid)) {
                         Spacer(modifier = Modifier.height(10.dp))
                         val voteCount = group.adminApplicationVoteCount(currentUid)
@@ -659,7 +659,7 @@ fun GroupCard(
                         }
                     }
 
-                    // ===================== Admin Demotion Dialog ==================
+                    // ====================Admin Demotion Dialog ==================
                     showRemovalDialogFor?.let { targetUid ->
                         val targetRole = group.memberRoles[targetUid] ?: GroupRole.MEMBER
                         val isTargetSuperAdmin = targetRole == GroupRole.SUPER_ADMIN
@@ -810,8 +810,8 @@ fun GroupCard(
                         )
                     }
 
-                    // ========= Pending applications visible to admins =========
-                    if (isAdmin) {
+                    // ========Pending applications visible to admins & superadmins=========
+                    if (isAdmin || isSuperAdmin) {
                         val pending = group.adminApplications.filter { it != currentUid }
                         if (pending.isNotEmpty()) {
                             Spacer(modifier = Modifier.height(10.dp))
@@ -850,7 +850,7 @@ fun GroupCard(
                                                 updated.voteForAdminApplication(applicantUid, currentUid)
                                                 group = updated
                                                 // voteForAdminApplication uses groupRef.updateChildren
-                                                // (relative paths) which admins can write — safe.
+                                                // (relative paths) which admins can write; safe.
                                                 onEdited(updated)
                                             }
                                         },
@@ -873,7 +873,7 @@ fun GroupCard(
     }
 }
 
-// ========================== small util components ========================
+// =========================small util components========================
 
 @Composable
 fun MiniHeader(text: String, color: Color) {

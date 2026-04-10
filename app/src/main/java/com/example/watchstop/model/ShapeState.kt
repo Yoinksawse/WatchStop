@@ -9,11 +9,9 @@ class ShapeState(
     var x: Float,
     var y: Float,
     size: Float,
-    rotation: Float,
     alpha: Float,
     val color: Color
 ) {
     val sizeAnim = Animatable(size)
-    val rotationAnim = Animatable(rotation)
     val alphaAnim = Animatable(alpha)
 }

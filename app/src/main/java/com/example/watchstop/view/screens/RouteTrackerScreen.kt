@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.keepScreenOn
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -232,7 +233,7 @@ fun RouteTrackerScreen() {
         }
     }
 
-    // Helper: Load from Firebase
+    //Load from Firebase
     LaunchedEffect(showHistory) {
         if (showHistory) {
             val userId = auth.currentUser?.uid ?: return@LaunchedEffect
@@ -334,7 +335,10 @@ fun RouteTrackerScreen() {
     //BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN BEGIN ui components
     val markerState = rememberMarkerState(position = pinLatLng) //for playback pin
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .keepScreenOn() //keep the screen on when this composable is rendered because otherwise location tracking will stop
+    ) {
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
             cameraPositionState = cameraPositionState,
@@ -650,7 +654,6 @@ fun RouteTrackerScreen() {
             }
         }
 
-        // Permission Dialog
         if (showPermissionDialog) {
             AlertDialog(
                 onDismissRequest = { showPermissionDialog = false },

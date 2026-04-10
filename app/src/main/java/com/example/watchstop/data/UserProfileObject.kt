@@ -20,7 +20,7 @@ object UserProfileObject {
     private val scope = CoroutineScope(Dispatchers.Main)
     private var profileJob: Job? = null
 
-    // ====================== Compose-observable state ====================
+    // =====================Compose-observable state ====================
     var userName: String by mutableStateOf(GUEST_USERNAME)
     var userPfpReference: String by mutableStateOf(DEFAULT_PFP)
     var darkmode: Boolean by mutableStateOf(INITIAL_DARKMODE)
@@ -55,7 +55,7 @@ object UserProfileObject {
         darkmode = true
     }
 
-    // ======================= Sync from Firebase =========================
+    // ======================Sync from Firebase =========================
 
     private fun startObservingProfile(uid: String) {
         profileJob?.cancel()
@@ -101,7 +101,7 @@ object UserProfileObject {
         }
     }
 
-    // ========================= Auth helpers =============================
+    // ========================Auth helpers=============================
 
     suspend fun signIn(email: String, password: String) {
         val firebaseUser = FirebaseRepository.signIn(email, password)

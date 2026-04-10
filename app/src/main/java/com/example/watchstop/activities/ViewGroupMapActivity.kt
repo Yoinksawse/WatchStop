@@ -98,7 +98,7 @@ fun ViewGroupMapScreen(groupId: String) {
         context, Manifest.permission.ACCESS_FINE_LOCATION
     ) == PackageManager.PERMISSION_GRANTED
 
-    // Periodic update trigger - fires every 3 seconds
+    //update trigger, fires every 3 seconds
     LaunchedEffect(Unit) {
         while (true) {
             delay(3000L)  // 3 second interval
@@ -106,7 +106,7 @@ fun ViewGroupMapScreen(groupId: String) {
         }
     }
 
-    // Fetch/refresh group data periodically
+    //refresh group data periodically
     LaunchedEffect(groupId, updateTrigger) {
         try {
             val group = FirebaseRepository.getGroup(groupId)
@@ -117,7 +117,6 @@ fun ViewGroupMapScreen(groupId: String) {
                 locationSharingEnabled = group.locationSharingEnabled.toMap()
                 tripStatus = group.tripStatus.toMap()
 
-                // Set geofence data
                 group.geofence?.let { geofence ->
                     geofenceCenter = geofence.center
                     geofenceRadius = geofence.radius
@@ -137,7 +136,7 @@ fun ViewGroupMapScreen(groupId: String) {
         }
     }
 
-    // Subscribe to real-time locations
+    //subscribes to real-time locations
     LaunchedEffect(groupId) {
         FirebaseRepository.observeGroupLocations(groupId).collect { locations ->
             memberLocations = locations.mapValues { (_, snapshot) ->
@@ -146,7 +145,7 @@ fun ViewGroupMapScreen(groupId: String) {
         }
     }
 
-    // Subscribe to group geofence changes
+    //subscribes to group geofence changes
     LaunchedEffect(groupId) {
         FirebaseRepository.observeGroupGeofence(groupId).collect { geofence ->
             if (geofence != null) {

@@ -50,7 +50,7 @@ data class GroupEntry(
         geofence = other.geofence?.copy()
     )
 
-    // ========================= Member Management ===========================
+    // ========================Member Management ===========================
 
     fun addMember(uid: String, role: GroupRole) {
         if (!groupMemberNames.contains(uid)) {
@@ -90,7 +90,7 @@ data class GroupEntry(
         canToggleSharing[uid] = allowed
     }
 
-    // ======================== Location Sharing =============================
+    // =======================Location Sharing =============================
 
     fun toggleSharing(uid: String): Boolean {
         // Requirement: A user may stop sharing their location only if permitted by an Administrator or Super-Administrator.
@@ -104,7 +104,7 @@ data class GroupEntry(
         locationSharingEnabled[uid] = enabled
     }
 
-    // =============================== Trip Status ===========================
+    // ==============================Trip Status ===========================
 
     fun setTripStatus(uid: String, status: TripStatus) {
         tripStatus[uid] = status
@@ -118,7 +118,7 @@ data class GroupEntry(
         }
     }
 
-    // ====================== Admin Applications =============================
+    // =====================Admin Applications =============================
 
     fun applyForAdmin(uid: String): Boolean {
         val role = memberRoles[uid] ?: return false
@@ -158,7 +158,7 @@ data class GroupEntry(
         adminApplicationVotes.remove(uid)
     }
 
-    // ======================= Admin Removal Voting ==========================
+    // ======================Admin Removal Voting ==========================
 
     fun voteToRemoveAdmin(targetUid: String, voterUid: String): Boolean {
         val targetRole = memberRoles[targetUid] ?: return false
@@ -196,7 +196,7 @@ data class GroupEntry(
     fun hasVotedToRemove(targetUid: String, voterUid: String): Boolean =
         votesToRemoveAdmin[targetUid]?.contains(voterUid) == true
 
-    // =========================== Utility ===================================
+    // ==========================Utility ===================================
 
     fun getRole(uid: String): GroupRole = memberRoles[uid] ?: GroupRole.MEMBER
     fun isAdmin(uid: String): Boolean {
