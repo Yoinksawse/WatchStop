@@ -13,3 +13,5 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+WatchStop/app/src/main/AndroidManifest.xml
